@@ -2,6 +2,7 @@ import { useState } from "react";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from "../lib/firebase";
 import { useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 
 export default function LoginPage() {
   const nav = useNavigate();
@@ -63,6 +64,13 @@ export default function LoginPage() {
         >
           {loading ? "Signing in..." : "Sign in"}
         </button>
+
+        <p className="mt-4 text-center text-sm text-gray-600">
+          New here?{" "}
+          <Link className="font-medium underline" to="/register">
+            Create an account
+          </Link>
+        </p>
       </form>
     </div>
   );

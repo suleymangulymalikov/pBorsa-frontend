@@ -1,73 +1,114 @@
-# React + TypeScript + Vite
+# pBorsa Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Frontend application for the **pBorsa** project.
 
-Currently, two official plugins are available:
+Built with:
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- React (Vite)
+- TypeScript
+- Firebase Authentication
+- Tailwind CSS
 
-## React Compiler
+---
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## 1. Requirements
 
-## Expanding the ESLint configuration
+Make sure you have installed:
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- Node.js **v18+**
+- npm
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+---
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+## 2. Setup & Run
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+The app will be available at:
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
 ```
+http://localhost:5173
+```
+
+---
+
+## 3. Firebase Authentication
+
+Authentication is handled using **Firebase Auth**.
+
+### Required file
+
+Create a file:
+
+```
+src/lib/firebase.ts
+```
+
+Example structure:
+
+```ts
+import { initializeApp } from "firebase/app";
+import { getAuth } from "firebase/auth";
+
+const firebaseConfig = {
+  apiKey: "...",
+  authDomain: "...",
+  projectId: "...",
+  appId: "...",
+};
+
+const app = initializeApp(firebaseConfig);
+export const auth = getAuth(app);
+```
+
+⚠️ **Do NOT commit real Firebase credentials**
+Use `.env` or local config.
+
+---
+
+## 4. Backend API
+
+Backend runs on:
+
+```
+http://localhost:8081
+```
+
+Authenticated requests must include a Firebase **ID token**:
+
+```
+Authorization: Bearer <FIREBASE_ID_TOKEN>
+```
+
+The frontend automatically attaches the token using Axios interceptors.
+
+Example endpoint:
+
+```
+GET /api/v1/users/me
+```
+
+---
+
+## 5. Project Structure
+
+```
+src/
+├── api/          # Backend API calls
+├── lib/          # Firebase config
+├── pages/        # Route pages
+├── components/   # Reusable UI components
+└── main.tsx
+```
+
+---
+
+### Authentication flow
+
+- Firebase Authentication on frontend
+- Firebase ID token sent as:
+  Authorization: Bearer <token>
+- Backend verifies token and maps user by firebaseUid
