@@ -17,7 +17,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      nav("/dashboard");
+      nav("/");
     } catch (err: any) {
       setError(err?.message ?? "Login failed");
     } finally {

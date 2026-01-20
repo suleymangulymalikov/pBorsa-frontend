@@ -184,10 +184,18 @@ export default function PositionsPage() {
                 </thead>
                 <tbody className="divide-y">
                   {positions.map((p) => {
+                    const unrealized =
+                      p.unrealizedPnL ?? p.unrealizedPl ?? undefined;
+                    const unrealizedPct =
+                      p.unrealizedPnLPercent ?? p.unrealizedPlpc ?? undefined;
+                    const qty = p.quantity ?? p.qty ?? undefined;
+                    const avgEntry =
+                      p.averageEntryPrice ?? p.avgEntryPrice ?? undefined;
+
                     const pl =
-                      typeof p.unrealizedPl === "string"
-                        ? Number(p.unrealizedPl)
-                        : (p.unrealizedPl as number | undefined);
+                      typeof unrealized === "string"
+                        ? Number(unrealized)
+                        : (unrealized as number | undefined);
 
                     const plClass =
                       pl === undefined || Number.isNaN(pl)
@@ -202,19 +210,19 @@ export default function PositionsPage() {
                       <tr key={p.symbol}>
                         <td className="px-4 py-3 font-medium">{p.symbol}</td>
                         <td className="px-4 py-3">{p.side ?? "—"}</td>
-                        <td className="px-4 py-3">{fmtNum(p.qty)}</td>
+                        <td className="px-4 py-3">{fmtNum(qty)}</td>
                         <td className="px-4 py-3">
-                          {fmtMoney(p.avgEntryPrice)}
+                          {fmtMoney(avgEntry)}
                         </td>
                         <td className="px-4 py-3">
                           {fmtMoney(p.currentPrice)}
                         </td>
                         <td className="px-4 py-3">{fmtMoney(p.marketValue)}</td>
                         <td className={`px-4 py-3 ${plClass}`}>
-                          {fmtMoney(p.unrealizedPl)}
+                          {fmtMoney(unrealized)}
                         </td>
                         <td className={`px-4 py-3 ${plClass}`}>
-                          {fmtPct(p.unrealizedPlpc)}
+                          {fmtPct(unrealizedPct)}
                         </td>
                       </tr>
                     );

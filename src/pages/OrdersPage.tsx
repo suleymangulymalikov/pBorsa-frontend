@@ -256,6 +256,10 @@ export default function OrdersPage() {
                     const oid = pickOrderId(o) ?? `row-${idx}`;
                     const isSelected =
                       selectedOrderId && pickOrderId(o) === selectedOrderId;
+                    const qty = o.quantity ?? o.qty ?? "-";
+                    const type = o.type ?? o.orderType ?? "-";
+                    const submitted =
+                      o.submittedAt ?? o.createdAt ?? o.updatedAt ?? "-";
 
                     return (
                       <tr
@@ -269,14 +273,14 @@ export default function OrdersPage() {
                           {pickOrderId(o) ?? "—"}
                         </td>
                         <td className="px-4 py-3 font-medium">
-                          {o.symbol ?? "—"}
+                          {o.symbol ?? "-"}
                         </td>
-                        <td className="px-4 py-3">{o.side ?? "—"}</td>
-                        <td className="px-4 py-3">{fmtNum(o.qty)}</td>
-                        <td className="px-4 py-3">{o.orderType ?? "—"}</td>
-                        <td className="px-4 py-3">{o.status ?? "—"}</td>
+                        <td className="px-4 py-3">{o.side ?? "-"}</td>
+                        <td className="px-4 py-3">{fmtNum(qty)}</td>
+                        <td className="px-4 py-3">{type}</td>
+                        <td className="px-4 py-3">{o.status ?? "-"}</td>
                         <td className="px-4 py-3">
-                          {o.submittedAt ? String(o.submittedAt) : "—"}
+                          {submitted ? String(submitted) : "-"}
                         </td>
                       </tr>
                     );
@@ -319,22 +323,27 @@ export default function OrdersPage() {
                   <thead className="bg-gray-50 text-left">
                     <tr>
                       <th className="px-4 py-3">When</th>
-                      <th className="px-4 py-3">Old</th>
-                      <th className="px-4 py-3">New</th>
+                      <th className="px-4 py-3">Status</th>
+                      <th className="px-4 py-3">Reason</th>
                       <th className="px-4 py-3">Message</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
-                    {selectedOrderHistory.map((h, idx) => (
-                      <tr key={h.id ?? `${idx}`}>
-                        <td className="px-4 py-3">
-                          {h.createdAt ? String(h.createdAt) : "—"}
-                        </td>
-                        <td className="px-4 py-3">{h.oldStatus ?? "—"}</td>
-                        <td className="px-4 py-3">{h.newStatus ?? "—"}</td>
-                        <td className="px-4 py-3">{h.message ?? "—"}</td>
-                      </tr>
-                    ))}
+                    {selectedOrderHistory.map((h, idx) => {
+                      const status = h.status ?? h.newStatus ?? "-";
+                      const reason = h.reason ?? h.oldStatus ?? "-";
+
+                      return (
+                        <tr key={h.id ?? `${idx}`}>
+                          <td className="px-4 py-3">
+                            {h.createdAt ? String(h.createdAt) : "-"}
+                          </td>
+                          <td className="px-4 py-3">{status}</td>
+                          <td className="px-4 py-3">{reason}</td>
+                          <td className="px-4 py-3">{h.message ?? "-"}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

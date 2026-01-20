@@ -4,8 +4,17 @@ import { useNavigate } from "react-router-dom";
 import { auth } from "../lib/firebase";
 import { api } from "../api/client";
 
-import type { Bar, Period, Quote } from "../api/marketData";
-import { getBars, getQuote } from "../api/marketData";
+import type { Bar, Period, Quote, Snapshot, Trade } from "../api/marketData";
+import {
+  addPollingSymbols,
+  getBars,
+  getPollingQuotes,
+  getQuote,
+  getSnapshot,
+  removePollingSymbols,
+  startPolling,
+  stopPolling,
+} from "../api/marketData";
 
 type MeResponse = {
   id: number;
@@ -52,12 +61,26 @@ export default function MarketDataPage() {
 
   const [quote, setQuote] = useState<Quote | null>(null);
   const [bars, setBars] = useState<Bar[]>([]);
+  const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+
+  const [pollSymbols, setPollSymbols] = useState("AAPL,MSFT");
+  const [pollInterval, setPollInterval] = useState(5);
+  const [polling, setPolling] = useState(false);
+  const [polledQuotes, setPolledQuotes] = useState<Quote[]>([]);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   const normalizedSymbol = useMemo(() => symbol.trim().toUpperCase(), [symbol]);
+  const normalizedPollSymbols = useMemo(
+    () =>
+      pollSymbols
+        .split(",")
+        .map((s) => s.trim().toUpperCase())
+        .filter(Boolean),
+    [pollSymbols],
+  );
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
@@ -104,6 +127,118 @@ export default function MarketDataPage() {
       setError(e?.message ?? "Failed to load market data");
       setQuote(null);
       setBars([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onSnapshot = async () => {
+    if (!userId) return;
+    if (normalizedPollSymbols.length === 0) return;
+
+    setLoading(true);
+    setError(null);
+    setMessage(null);
+
+    try {
+      const data = await getSnapshot(userId, normalizedPollSymbols);
+      setSnapshot(data);
+      setMessage("Snapshot loaded.");
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to load snapshot");
+      setSnapshot(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onStartPolling = async () => {
+    if (!userId) return;
+    if (normalizedPollSymbols.length === 0) return;
+
+    setLoading(true);
+    setError(null);
+    setMessage(null);
+
+    try {
+      await startPolling(userId, normalizedPollSymbols, pollInterval);
+      setPolling(true);
+      setMessage("Polling started.");
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to start polling");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onStopPolling = async () => {
+    if (!userId) return;
+
+    setLoading(true);
+    setError(null);
+    setMessage(null);
+
+    try {
+      await stopPolling(userId);
+      setPolling(false);
+      setMessage("Polling stopped.");
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to stop polling");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onAddSymbols = async () => {
+    if (!userId) return;
+    if (normalizedPollSymbols.length === 0) return;
+
+    setLoading(true);
+    setError(null);
+    setMessage(null);
+
+    try {
+      await addPollingSymbols(userId, normalizedPollSymbols);
+      setMessage("Symbols added to polling.");
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to add symbols");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onRemoveSymbols = async () => {
+    if (!userId) return;
+    if (normalizedPollSymbols.length === 0) return;
+
+    setLoading(true);
+    setError(null);
+    setMessage(null);
+
+    try {
+      await removePollingSymbols(userId, normalizedPollSymbols);
+      setMessage("Symbols removed from polling.");
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to remove symbols");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onFetchPolled = async () => {
+    if (!userId) return;
+
+    setLoading(true);
+    setError(null);
+    setMessage(null);
+
+    try {
+      const data = await getPollingQuotes(userId);
+      setPolledQuotes(Array.isArray(data) ? data : []);
+      setMessage("Polled quotes loaded.");
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to load polled quotes");
+      setPolledQuotes([]);
     } finally {
       setLoading(false);
     }
@@ -242,6 +377,154 @@ export default function MarketDataPage() {
               </div>
             )}
           </div>
+        </div>
+
+        <div className="rounded-xl border bg-white p-6 shadow">
+          <div className="text-sm font-semibold">Snapshot</div>
+          <div className="mt-3 flex flex-wrap gap-3">
+            <input
+              className="min-w-[260px] rounded-lg border px-3 py-2 text-sm"
+              value={pollSymbols}
+              onChange={(e) => setPollSymbols(e.target.value)}
+              placeholder="AAPL,MSFT,NVDA"
+            />
+            <button
+              disabled={loading || !userId || normalizedPollSymbols.length === 0}
+              className="rounded-lg bg-black px-4 py-2 text-sm text-white disabled:opacity-60"
+              onClick={() => void onSnapshot()}
+            >
+              {loading ? "Loading..." : "Load snapshot"}
+            </button>
+          </div>
+
+          {snapshot ? (
+            <div className="mt-4 grid gap-4 md:grid-cols-3">
+              <div className="rounded-lg border p-3">
+                <div className="text-xs font-semibold text-gray-600">
+                  Quotes
+                </div>
+                <div className="mt-2 text-sm">
+                  {(snapshot.quotes ?? []).length} items
+                </div>
+              </div>
+              <div className="rounded-lg border p-3">
+                <div className="text-xs font-semibold text-gray-600">
+                  Latest trades
+                </div>
+                <div className="mt-2 text-sm">
+                  {(snapshot.latestTrades ?? []).length} items
+                </div>
+              </div>
+              <div className="rounded-lg border p-3">
+                <div className="text-xs font-semibold text-gray-600">
+                  Latest bars
+                </div>
+                <div className="mt-2 text-sm">
+                  {(snapshot.latestBars ?? []).length} items
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-3 text-sm text-gray-600">No snapshot loaded.</div>
+          )}
+
+          {snapshot && (
+            <pre className="mt-4 overflow-auto rounded-lg bg-gray-50 p-3 text-xs">
+              {JSON.stringify(snapshot, null, 2)}
+            </pre>
+          )}
+        </div>
+
+        <div className="rounded-xl border bg-white p-6 shadow">
+          <div className="text-sm font-semibold">Polling</div>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <input
+              className="min-w-[260px] rounded-lg border px-3 py-2 text-sm"
+              value={pollSymbols}
+              onChange={(e) => setPollSymbols(e.target.value)}
+              placeholder="AAPL,MSFT,NVDA"
+            />
+            <input
+              type="number"
+              className="w-28 rounded-lg border px-3 py-2 text-sm"
+              min={1}
+              max={60}
+              value={pollInterval}
+              onChange={(e) => setPollInterval(Number(e.target.value))}
+            />
+            <button
+              disabled={loading || !userId || normalizedPollSymbols.length === 0}
+              className="rounded-lg bg-black px-4 py-2 text-sm text-white disabled:opacity-60"
+              onClick={() => void onStartPolling()}
+            >
+              Start
+            </button>
+            <button
+              disabled={loading || !userId || !polling}
+              className="rounded-lg border px-4 py-2 text-sm disabled:opacity-60"
+              onClick={() => void onStopPolling()}
+            >
+              Stop
+            </button>
+            <button
+              disabled={loading || !userId || normalizedPollSymbols.length === 0}
+              className="rounded-lg border px-4 py-2 text-sm disabled:opacity-60"
+              onClick={() => void onAddSymbols()}
+            >
+              Add symbols
+            </button>
+            <button
+              disabled={loading || !userId || normalizedPollSymbols.length === 0}
+              className="rounded-lg border px-4 py-2 text-sm disabled:opacity-60"
+              onClick={() => void onRemoveSymbols()}
+            >
+              Remove symbols
+            </button>
+            <button
+              disabled={loading || !userId}
+              className="rounded-lg border px-4 py-2 text-sm disabled:opacity-60"
+              onClick={() => void onFetchPolled()}
+            >
+              Fetch polled quotes
+            </button>
+          </div>
+
+          <div className="mt-3 text-xs text-gray-600">
+            Status: {polling ? "Running" : "Stopped"}
+          </div>
+
+          {polledQuotes.length > 0 ? (
+            <div className="mt-4 overflow-auto rounded-lg border">
+              <table className="min-w-full text-sm">
+                <thead className="bg-gray-50 text-left">
+                  <tr>
+                    <th className="px-4 py-3">Symbol</th>
+                    <th className="px-4 py-3">Bid</th>
+                    <th className="px-4 py-3">Ask</th>
+                    <th className="px-4 py-3">Time</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {polledQuotes.map((q, idx) => (
+                    <tr key={`${q.symbol ?? "sym"}-${idx}`}>
+                      <td className="px-4 py-3 font-medium">
+                        {q.symbol ?? "-"}
+                      </td>
+                      <td className="px-4 py-3">{fmtNum(q.bidPrice)}</td>
+                      <td className="px-4 py-3">{fmtNum(q.askPrice)}</td>
+                      <td className="px-4 py-3">
+                        {q.timestamp ? String(q.timestamp) : "-"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="mt-3 text-sm text-gray-600">
+              No polled quotes loaded.
+            </div>
+          )}
         </div>
 
         <div className="rounded-xl border bg-white p-6 shadow">

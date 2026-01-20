@@ -33,6 +33,27 @@ export type Bar = {
   [key: string]: unknown;
 };
 
+export type Trade = {
+  symbol?: string;
+  price?: number;
+  size?: number;
+  timestamp?: string;
+  exchange?: string;
+  tradeId?: string;
+  tape?: string;
+  conditions?: string;
+  [key: string]: unknown;
+};
+
+export type Snapshot = {
+  quotes?: Quote[];
+  latestTrades?: Trade[];
+  latestBars?: Bar[];
+  snapshotTimestamp?: string;
+  dataSource?: string;
+  [key: string]: unknown;
+};
+
 export async function getQuote(userId: number, symbol: string) {
   return api.get<Quote>(`/api/v1/market-data/${userId}/quotes/${symbol}`);
 }
@@ -51,4 +72,45 @@ export async function getBars(
   }).toString();
 
   return api.get<Bar[]>(`/api/v1/market-data/${userId}/bars/${symbol}?${qs}`);
+}
+
+export async function getSnapshot(userId: number, symbols: string[]) {
+  const qs = new URLSearchParams({
+    symbols: symbols.join(","),
+  }).toString();
+  return api.get<Snapshot>(`/api/v1/market-data/${userId}/snapshot?${qs}`);
+}
+
+export async function startPolling(
+  userId: number,
+  symbols: string[],
+  intervalSeconds: number,
+) {
+  const qs = new URLSearchParams({
+    symbols: symbols.join(","),
+    intervalSeconds: String(intervalSeconds),
+  }).toString();
+  return api.post<string>(`/api/v1/market-data/${userId}/polling/start?${qs}`);
+}
+
+export async function addPollingSymbols(userId: number, symbols: string[]) {
+  const qs = new URLSearchParams({
+    symbols: symbols.join(","),
+  }).toString();
+  return api.post<void>(`/api/v1/market-data/${userId}/polling/symbols?${qs}`);
+}
+
+export async function removePollingSymbols(userId: number, symbols: string[]) {
+  const qs = new URLSearchParams({
+    symbols: symbols.join(","),
+  }).toString();
+  return api.delete<void>(`/api/v1/market-data/${userId}/polling/symbols?${qs}`);
+}
+
+export async function getPollingQuotes(userId: number) {
+  return api.get<Quote[]>(`/api/v1/market-data/${userId}/polling/quotes`);
+}
+
+export async function stopPolling(userId: number) {
+  return api.post<void>(`/api/v1/market-data/${userId}/polling/stop`);
 }

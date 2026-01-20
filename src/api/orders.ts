@@ -2,23 +2,33 @@ import { api } from "./client";
 
 export type OrderDetail = {
   id?: string; // UUID
-  orderId?: string; // some DTOs use this
+  orderId?: string; // Alpaca order ID
   userStrategyId?: number;
 
   symbol?: string;
   side?: string; // BUY/SELL etc
+  quantity?: number | string;
   qty?: number | string;
 
+  type?: string; // MARKET/LIMIT/STOP/STOP_LIMIT
   orderType?: string; // MARKET/LIMIT
   timeInForce?: string;
+  limitPrice?: number | string | null;
+  stopPrice?: number | string | null;
 
   status?: string;
+  message?: string | null;
 
+  createdAt?: string;
+  updatedAt?: string;
   submittedAt?: string;
   filledAt?: string;
-  canceledAt?: string;
+  expiredAt?: string;
+  cancelledAt?: string;
 
+  filledQuantity?: number | string;
   filledQty?: number | string;
+  filledAveragePrice?: number | string | null;
   filledAvgPrice?: number | string;
 
   [key: string]: unknown;
@@ -28,6 +38,8 @@ export type OrderHistoryEntry = {
   id?: string; // UUID
   orderId?: string; // UUID
 
+  status?: string;
+  reason?: string;
   oldStatus?: string;
   newStatus?: string;
 

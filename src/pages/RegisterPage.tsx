@@ -32,7 +32,7 @@ export default function RegisterPage() {
         await updateProfile(cred.user, { displayName: displayName.trim() });
       }
 
-      nav("/dashboard");
+      nav("/");
     } catch (err: any) {
       setError(err?.message ?? "Registration failed");
     } finally {
