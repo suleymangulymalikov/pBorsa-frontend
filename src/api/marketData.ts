@@ -104,7 +104,9 @@ export async function removePollingSymbols(userId: number, symbols: string[]) {
   const qs = new URLSearchParams({
     symbols: symbols.join(","),
   }).toString();
-  return api.delete<void>(`/api/v1/market-data/${userId}/polling/symbols?${qs}`);
+  return api.delete<void>(
+    `/api/v1/market-data/${userId}/polling/symbols?${qs}`,
+  );
 }
 
 export async function getPollingQuotes(userId: number) {

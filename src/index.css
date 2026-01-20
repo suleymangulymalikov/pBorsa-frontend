@@ -1,3 +1,16 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  --page-bg: #0b1220;
+  --panel-bg: #0e1a2c;
+  --panel-border: #1b2b45;
+  --muted: #93a4bf;
+  --accent: #2ecc71;
+}
+
+body {
+  font-family: "Space Grotesk", "IBM Plex Sans", "Helvetica Neue", sans-serif;
+  background: var(--page-bg);
+}
