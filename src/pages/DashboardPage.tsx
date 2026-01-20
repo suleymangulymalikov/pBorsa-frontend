@@ -1,16 +1,14 @@
-import { onAuthStateChanged, signOut } from "firebase/auth";
+import { onAuthStateChanged, signOut, getIdToken } from "firebase/auth";
 import { useEffect, useState } from "react";
 import { auth } from "../lib/firebase";
 import { useNavigate } from "react-router-dom";
-import { getMe } from "../api/users";
-
-import { getIdToken } from "firebase/auth";
+import { api } from "../api/client";
 
 async function copyIdToken() {
   const user = auth.currentUser;
   if (!user) return;
 
-  const token = await getIdToken(user, true); // true = force refresh
+  const token = await getIdToken(user, true);
   await navigator.clipboard.writeText(token);
   alert("ID token copied to clipboard");
 }
@@ -27,16 +25,15 @@ export default function DashboardPage() {
         nav("/login", { replace: true });
         return;
       }
+
       setEmail(user.email);
 
       try {
         setMeError(null);
-        const data = await getMe();
+        const data = await api.get<any>("/api/v1/users/me");
         setMe(data);
       } catch (e: any) {
-        setMeError(
-          e?.response?.data?.message ?? e?.message ?? "Failed to load /me",
-        );
+        setMeError(e?.message ?? "Failed to load /me");
       }
     });
 
@@ -69,19 +66,64 @@ export default function DashboardPage() {
             </pre>
           )}
         </div>
-        <button
-          className="mt-4 rounded-lg border px-4 py-2"
-          onClick={copyIdToken}
-        >
-          Copy Firebase ID token
-        </button>
 
-        <button
-          className="mt-6 rounded-lg border px-4 py-2"
-          onClick={() => signOut(auth)}
-        >
-          Sign out
-        </button>
+        <div className="mt-6 flex flex-wrap gap-3">
+          <button
+            className="rounded-lg bg-black px-4 py-2 text-sm text-white"
+            onClick={() => nav("/credentials")}
+          >
+            Alpaca credentials
+          </button>
+
+          <button
+            className="rounded-lg bg-black px-4 py-2 text-sm text-white"
+            onClick={() => nav("/account")}
+          >
+            Account
+          </button>
+
+          <button
+            className="rounded-lg bg-black px-4 py-2 text-sm text-white"
+            onClick={() => nav("/positions")}
+          >
+            Positions
+          </button>
+
+          <button
+            className="rounded-lg bg-black px-4 py-2 text-sm text-white"
+            onClick={() => nav("/market")}
+          >
+            Market data
+          </button>
+
+          <button
+            className="rounded-lg bg-black px-4 py-2 text-sm text-white"
+            onClick={() => nav("/strategies")}
+          >
+            Strategies
+          </button>
+
+          <button
+            className="rounded-lg bg-black px-4 py-2 text-sm text-white"
+            onClick={() => nav("/orders")}
+          >
+            Orders
+          </button>
+
+          <button
+            className="rounded-lg border px-4 py-2 text-sm"
+            onClick={copyIdToken}
+          >
+            Copy Firebase ID token
+          </button>
+
+          <button
+            className="rounded-lg border px-4 py-2 text-sm"
+            onClick={() => signOut(auth)}
+          >
+            Sign out
+          </button>
+        </div>
       </div>
     </div>
   );
