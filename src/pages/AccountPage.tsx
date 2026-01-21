@@ -68,6 +68,7 @@ export default function AccountPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [missingAlpaca, setMissingAlpaca] = useState(false);
   const [section, setSection] = useState<
     "profile" | "portfolio" | "security" | "credentials" | "actions"
   >("profile");
@@ -81,25 +82,77 @@ export default function AccountPage() {
     return true;
   }, [account]);
 
+  function extractErrorMessage(error: any) {
+    if (!error) return "Request failed";
+    const raw = typeof error?.message === "string" ? error.message : String(error);
+    const trimmed = raw.trim();
+    if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (typeof parsed?.error === "string") return parsed.error;
+      } catch {
+        return trimmed;
+      }
+    }
+    return trimmed;
+  }
+
+  function isMissingAlpacaError(message: string) {
+    return message.toLowerCase().includes("alpaca credentials not found");
+  }
+
   async function loadAll(uid: number) {
     setLoading(true);
     setError(null);
     setMessage(null);
+    setMissingAlpaca(false);
 
     try {
-      const [acc, pv, pnl, creds] = await Promise.all([
+      const results = await Promise.allSettled([
         getAccountInfo(uid),
         getPortfolioValue(uid),
         getUnrealizedPnl(uid),
         getCredentialsStatus(uid),
       ]);
 
-      setAccount(acc);
-      setPortfolioValue(pv);
-      setUnrealizedPnl(pnl);
-      setHasCreds(creds);
+      const [accRes, pvRes, pnlRes, credsRes] = results;
+
+      if (accRes.status === "fulfilled") {
+        setAccount(accRes.value);
+      } else {
+        const msg = extractErrorMessage(accRes.reason);
+        if (isMissingAlpacaError(msg)) setMissingAlpaca(true);
+        else setError(msg);
+        setAccount(null);
+      }
+
+      if (pvRes.status === "fulfilled") {
+        setPortfolioValue(pvRes.value);
+      } else {
+        const msg = extractErrorMessage(pvRes.reason);
+        if (isMissingAlpacaError(msg)) setMissingAlpaca(true);
+        else setError(msg);
+        setPortfolioValue(null);
+      }
+
+      if (pnlRes.status === "fulfilled") {
+        setUnrealizedPnl(pnlRes.value);
+      } else {
+        const msg = extractErrorMessage(pnlRes.reason);
+        if (isMissingAlpacaError(msg)) setMissingAlpaca(true);
+        else setError(msg);
+        setUnrealizedPnl(null);
+      }
+
+      if (credsRes.status === "fulfilled") {
+        setHasCreds(credsRes.value);
+      } else {
+        const msg = extractErrorMessage(credsRes.reason);
+        setError(msg);
+        setHasCreds(null);
+      }
     } catch (e: any) {
-      setError(e?.message ?? "Failed to load account info");
+      setError(extractErrorMessage(e));
       setAccount(null);
       setPortfolioValue(null);
       setUnrealizedPnl(null);
@@ -136,6 +189,7 @@ export default function AccountPage() {
     setLoading(true);
     setError(null);
     setMessage(null);
+    setMissingAlpaca(false);
 
     try {
       const refreshed = await refreshAccountInfo(userId);
@@ -150,7 +204,12 @@ export default function AccountPage() {
 
       setMessage("Account refreshed from Alpaca.");
     } catch (e: any) {
-      setError(e?.message ?? "Failed to refresh account");
+      const msg = extractErrorMessage(e);
+      if (isMissingAlpacaError(msg)) {
+        setMissingAlpaca(true);
+      } else {
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -301,6 +360,22 @@ export default function AccountPage() {
         {message && (
           <div className="mt-4 rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm text-emerald-200">
             {message}
+          </div>
+        )}
+        {missingAlpaca && (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#1f2e44] bg-[#0b1728] p-4 text-sm text-[var(--muted)]">
+            <div>
+              <div className="text-white">Connect your Alpaca account.</div>
+              <div className="mt-1 text-xs text-[var(--muted)]">
+                Add API keys to unlock portfolio data, positions, and P/L.
+              </div>
+            </div>
+            <button
+              className="rounded-lg bg-[#1f6feb] px-4 py-2 text-sm font-semibold text-white"
+              onClick={() => setSection("credentials")}
+            >
+              Configure Alpaca
+            </button>
           </div>
         )}
         {error && (

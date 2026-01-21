@@ -12,6 +12,7 @@ export default function DashboardPage() {
   const [email, setEmail] = useState<string | null>(null);
   const [me, setMe] = useState<any>(null);
   const [meError, setMeError] = useState<string | null>(null);
+  const [missingAlpaca, setMissingAlpaca] = useState(false);
   const [loading, setLoading] = useState(false);
   const [portfolioValue, setPortfolioValue] = useState<number | string | null>(
     null,
@@ -57,6 +58,25 @@ export default function DashboardPage() {
     return n < 0;
   }
 
+  function extractErrorMessage(error: any) {
+    if (!error) return "Request failed";
+    const raw = typeof error?.message === "string" ? error.message : String(error);
+    const trimmed = raw.trim();
+    if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (typeof parsed?.error === "string") return parsed.error;
+      } catch {
+        return trimmed;
+      }
+    }
+    return trimmed;
+  }
+
+  function isMissingAlpacaError(message: string) {
+    return message.toLowerCase().includes("alpaca credentials not found");
+  }
+
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (!user) {
@@ -69,10 +89,11 @@ export default function DashboardPage() {
       try {
         setLoading(true);
         setMeError(null);
+        setMissingAlpaca(false);
         const data = await api.get<any>("/api/v1/users/me");
         setMe(data);
 
-        const [pv, pnl, positions, userStrategies, account] = await Promise.all([
+        const results = await Promise.allSettled([
           getPortfolioValue(data.id),
           getUnrealizedPnl(data.id),
           getPositions(data.id),
@@ -80,30 +101,72 @@ export default function DashboardPage() {
           getAccountInfo(data.id),
         ]);
 
-        setPortfolioValue(pv);
-        setUnrealizedPnl(pnl);
-        setPositionsCount(Array.isArray(positions) ? positions.length : 0);
-        setStrategies(Array.isArray(userStrategies) ? userStrategies : []);
-        setTotalValue(account?.equity ?? pv ?? null);
-        if (account?.equity !== undefined && account?.lastEquity !== undefined) {
-          const current =
-            typeof account.equity === "string"
-              ? Number(account.equity)
-              : (account.equity as number);
-          const last =
-            typeof account.lastEquity === "string"
-              ? Number(account.lastEquity)
-              : (account.lastEquity as number);
-          if (!Number.isNaN(current) && !Number.isNaN(last)) {
-            setTotalValueDelta(current - last);
+        const [pvRes, pnlRes, positionsRes, strategiesRes, accountRes] = results;
+
+        if (pvRes.status === "fulfilled") {
+          setPortfolioValue(pvRes.value);
+        } else {
+          const msg = extractErrorMessage(pvRes.reason);
+          if (isMissingAlpacaError(msg)) setMissingAlpaca(true);
+          setPortfolioValue(null);
+        }
+
+        if (pnlRes.status === "fulfilled") {
+          setUnrealizedPnl(pnlRes.value);
+        } else {
+          const msg = extractErrorMessage(pnlRes.reason);
+          if (isMissingAlpacaError(msg)) setMissingAlpaca(true);
+          setUnrealizedPnl(null);
+        }
+
+        if (positionsRes.status === "fulfilled") {
+          const positions = positionsRes.value;
+          setPositionsCount(Array.isArray(positions) ? positions.length : 0);
+        } else {
+          const msg = extractErrorMessage(positionsRes.reason);
+          if (isMissingAlpacaError(msg)) setMissingAlpaca(true);
+          setPositionsCount(null);
+        }
+
+        if (strategiesRes.status === "fulfilled") {
+          setStrategies(
+            Array.isArray(strategiesRes.value) ? strategiesRes.value : [],
+          );
+        } else {
+          const msg = extractErrorMessage(strategiesRes.reason);
+          setMeError(msg);
+          setStrategies([]);
+        }
+
+        if (accountRes.status === "fulfilled") {
+          const account = accountRes.value;
+          setTotalValue(account?.equity ?? null);
+          if (account?.equity !== undefined && account?.lastEquity !== undefined) {
+            const current =
+              typeof account.equity === "string"
+                ? Number(account.equity)
+                : (account.equity as number);
+            const last =
+              typeof account.lastEquity === "string"
+                ? Number(account.lastEquity)
+                : (account.lastEquity as number);
+            if (!Number.isNaN(current) && !Number.isNaN(last)) {
+              setTotalValueDelta(current - last);
+            } else {
+              setTotalValueDelta(null);
+            }
           } else {
             setTotalValueDelta(null);
           }
         } else {
+          const msg = extractErrorMessage(accountRes.reason);
+          if (isMissingAlpacaError(msg)) setMissingAlpaca(true);
+          setTotalValue(null);
           setTotalValueDelta(null);
         }
+
       } catch (e: any) {
-        setMeError(e?.message ?? "Failed to load /me");
+        setMeError(extractErrorMessage(e));
         setPortfolioValue(null);
         setUnrealizedPnl(null);
         setPositionsCount(null);
@@ -133,6 +196,22 @@ export default function DashboardPage() {
         {meError && (
           <div className="mt-4 rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
             {meError}
+          </div>
+        )}
+        {missingAlpaca && (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#1f2e44] bg-[#0b1728] p-4 text-sm text-[var(--muted)]">
+            <div>
+              <div className="text-white">Connect your Alpaca account.</div>
+              <div className="mt-1 text-xs text-[var(--muted)]">
+                Add API keys to unlock portfolio data, positions, and P/L.
+              </div>
+            </div>
+            <button
+              className="rounded-lg bg-[#1f6feb] px-4 py-2 text-sm font-semibold text-white"
+              onClick={() => nav("/account")}
+            >
+              Configure Alpaca
+            </button>
           </div>
         )}
 
