@@ -23,7 +23,12 @@ export type CreateUserStrategyRequest = {
   baseStrategyCode: string;
   name: string;
   symbol: string;
-  budget: number; // ✅ REQUIRED by backend
+  budget: number; // ? REQUIRED by backend
+};
+
+export type UpdateUserStrategyRequest = {
+  name?: string;
+  status?: "ACTIVE" | "PAUSED" | "STOPPED";
 };
 
 export async function getBaseStrategies() {
@@ -56,5 +61,16 @@ export async function deleteUserStrategy(
 ) {
   return api.delete<void>(
     `/api/v1/users/${userId}/strategies/${userStrategyId}`,
+  );
+}
+
+export async function updateUserStrategy(
+  userId: number,
+  userStrategyId: number,
+  req: UpdateUserStrategyRequest,
+) {
+  return api.patch<UserStrategy>(
+    `/api/v1/users/${userId}/strategies/${userStrategyId}`,
+    req,
   );
 }

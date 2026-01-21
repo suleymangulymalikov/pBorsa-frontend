@@ -9,6 +9,7 @@ import PositionsPage from "./pages/PositionsPage";
 import MarketDataPage from "./pages/MarketDataPage";
 import OrdersPage from "./pages/OrdersPage";
 import StrategiesPage from "./pages/StrategiesPage";
+import AppLayout from "./layouts/AppLayout";
 
 export default function App() {
   return (
@@ -17,14 +18,16 @@ export default function App() {
       <Route path="/register" element={<RegisterPage />} />
 
       <Route element={<ProtectedRoute />}>
-        <Route path="/" element={<DashboardPage />} />
-        <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/credentials" element={<CredentialsPage />} />
-        <Route path="/account" element={<AccountPage />} />
-        <Route path="/positions" element={<PositionsPage />} />
-        <Route path="/market" element={<MarketDataPage />} />
-        <Route path="/orders" element={<OrdersPage />} />
-        <Route path="/strategies" element={<StrategiesPage />} />
+        <Route element={<AppLayout />}>
+          <Route path="/" element={<DashboardPage />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/credentials" element={<CredentialsPage />} />
+          <Route path="/account" element={<AccountPage />} />
+          <Route path="/positions" element={<PositionsPage />} />
+          <Route path="/market" element={<MarketDataPage />} />
+          <Route path="/orders" element={<OrdersPage />} />
+          <Route path="/strategies" element={<StrategiesPage />} />
+        </Route>
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

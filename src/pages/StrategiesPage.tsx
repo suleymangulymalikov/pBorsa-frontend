@@ -11,6 +11,7 @@ import {
   deleteUserStrategy,
   getBaseStrategies,
   getUserStrategies,
+  updateUserStrategy,
 } from "../api/strategies";
 
 type MeResponse = {
@@ -22,12 +23,12 @@ type MeResponse = {
 function Badge({ text }: { text: string }) {
   const cls =
     text === "ACTIVE"
-      ? "bg-green-50 text-green-800 border-green-200"
+      ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/20"
       : text === "CREATED"
-        ? "bg-amber-50 text-amber-800 border-amber-200"
+        ? "bg-amber-500/10 text-amber-300 border-amber-500/20"
         : text === "PREPARING"
-          ? "bg-blue-50 text-blue-800 border-blue-200"
-          : "bg-gray-50 text-gray-800 border-gray-200";
+          ? "bg-blue-500/10 text-blue-300 border-blue-500/20"
+          : "bg-gray-500/10 text-gray-300 border-gray-500/20";
 
   return (
     <span
@@ -41,7 +42,7 @@ function Badge({ text }: { text: string }) {
 // backend returns nested baseStrategy; support both shapes
 function getBaseCode(s: any): string {
   return (
-    s?.baseStrategyCode ?? s?.baseStrategy?.code ?? s?.baseStrategy?.name ?? "—"
+    s?.baseStrategyCode ?? s?.baseStrategy?.code ?? s?.baseStrategy?.name ?? "-"
   );
 }
 
@@ -57,6 +58,9 @@ export default function StrategiesPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editCurrentStatus, setEditCurrentStatus] = useState<string>("CREATED");
 
   // form
   const [baseCode, setBaseCode] = useState("");
@@ -114,7 +118,7 @@ export default function StrategiesPage() {
     });
 
     return () => unsub();
-  }, [nav]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [nav]);
 
   // auto-refresh while any is PREPARING
   useEffect(() => {
@@ -126,7 +130,7 @@ export default function StrategiesPage() {
     }, 3000);
 
     return () => clearInterval(t);
-  }, [userId, hasPreparing]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [userId, hasPreparing]);
 
   const onCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -204,60 +208,118 @@ export default function StrategiesPage() {
     }
   };
 
+  const onStop = async (id: number) => {
+    if (!userId) return;
+
+    setLoading(true);
+    setError(null);
+    setMessage(null);
+
+    try {
+      await updateUserStrategy(userId, id, { status: "STOPPED" });
+      setMessage("Strategy stopped.");
+      await loadAll(userId);
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to stop strategy");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onStartEdit = (s: any) => {
+    setEditingId(s.id);
+    setEditName(String(s.name ?? ""));
+    const status = String(s.status ?? "CREATED");
+    setEditCurrentStatus(status);
+  };
+
+  const onCancelEdit = () => {
+    setEditingId(null);
+    setEditName("");
+    setEditCurrentStatus("CREATED");
+  };
+
+  const onSaveEdit = async (id: number) => {
+    if (!userId) return;
+    if (!editName.trim()) {
+      setError("Name is required.");
+      return;
+    }
+
+    const req = {
+      name: editName.trim(),
+    };
+
+    setLoading(true);
+    setError(null);
+    setMessage(null);
+
+    try {
+      await updateUserStrategy(userId, id, req);
+      setMessage("Strategy updated.");
+      setEditingId(null);
+      await loadAll(userId);
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to update strategy");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="mx-auto max-w-6xl space-y-6">
-        <div className="rounded-xl border bg-white p-6 shadow">
+    <div className="min-h-screen bg-[var(--page-bg)] text-white">
+      <div className="mx-auto max-w-6xl space-y-6 px-6 py-10">
+        <div className="rounded-2xl border border-[#132033] bg-[#0f1b2d] p-6">
           <h1 className="text-2xl font-semibold">Strategies</h1>
-          <p className="mt-2 text-sm text-gray-700">
+          <p className="mt-2 text-sm text-[var(--muted)]">
             Create and activate trading strategies for{" "}
-            <span className="font-medium">{me?.email ?? "..."}</span>
+            <span className="text-white">{me?.email ?? "..."}</span>
           </p>
 
           {hasPreparing && (
-            <div className="mt-3 text-xs text-blue-700">
-              One or more strategies are PREPARING — auto-refresh is running…
+            <div className="mt-3 text-xs text-blue-300">
+              One or more strategies are PREPARING - auto-refresh is running.
             </div>
           )}
 
           {message && (
-            <div className="mt-4 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800">
+            <div className="mt-4 rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm text-emerald-200">
               {message}
             </div>
           )}
           {error && (
-            <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            <div className="mt-4 rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
               {error}
             </div>
           )}
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="rounded-xl border bg-white p-6 shadow">
-            <div className="text-sm font-semibold">Base strategies</div>
+        <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+          <div className="rounded-2xl border border-[#132033] bg-[#0f1b2d] p-6">
+            <div className="text-sm font-semibold">Base Strategies</div>
             {baseStrategies.length === 0 ? (
-              <div className="mt-3 text-sm text-gray-600">
+              <div className="mt-3 text-sm text-[var(--muted)]">
                 No base strategies found.
               </div>
             ) : (
-              <div className="mt-4 overflow-auto rounded-lg border">
+              <div className="mt-4 overflow-auto rounded-lg border border-[#132033]">
                 <table className="min-w-full text-sm">
-                  <thead className="bg-gray-50 text-left">
+                  <thead className="bg-[#0b1728] text-left text-xs text-[var(--muted)]">
                     <tr>
                       <th className="px-4 py-3">Code</th>
                       <th className="px-4 py-3">Name</th>
                       <th className="px-4 py-3">Description</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y">
+                  <tbody className="divide-y divide-[#132033]">
                     {baseStrategies.map((s) => (
                       <tr key={s.code}>
-                        <td className="px-4 py-3 font-mono text-xs">
+                        <td className="px-4 py-3 font-mono text-xs text-white">
                           {s.code}
                         </td>
                         <td className="px-4 py-3 font-medium">{s.name}</td>
-                        <td className="px-4 py-3 text-gray-600">
-                          {s.description ?? "—"}
+                        <td className="px-4 py-3 text-[var(--muted)]">
+                          {s.description ?? "-"}
                         </td>
                       </tr>
                     ))}
@@ -269,15 +331,15 @@ export default function StrategiesPage() {
 
           <form
             onSubmit={onCreate}
-            className="rounded-xl border bg-white p-6 shadow"
+            className="rounded-2xl border border-[#132033] bg-[#0f1b2d] p-6"
           >
-            <div className="text-sm font-semibold">Create user strategy</div>
+            <div className="text-sm font-semibold">Create Strategy</div>
 
-            <label className="mt-4 block text-sm font-medium">
+            <label className="mt-4 block text-xs uppercase tracking-wide text-[var(--muted)]">
               Base strategy
             </label>
             <select
-              className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+              className="mt-2 w-full rounded-lg border border-[#1f2e44] bg-[#0b1728] px-3 py-2 text-sm text-white"
               value={baseCode}
               onChange={(e) => setBaseCode(e.target.value)}
               disabled={loading || baseStrategies.length === 0}
@@ -287,67 +349,71 @@ export default function StrategiesPage() {
               ) : (
                 baseStrategies.map((b) => (
                   <option key={b.code} value={b.code}>
-                    {b.code} — {b.name}
+                    {b.code} - {b.name}
                   </option>
                 ))
               )}
             </select>
 
-            <label className="mt-4 block text-sm font-medium">Name</label>
+            <label className="mt-4 block text-xs uppercase tracking-wide text-[var(--muted)]">
+              Name
+            </label>
             <input
-              className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+              className="mt-2 w-full rounded-lg border border-[#1f2e44] bg-[#0b1728] px-3 py-2 text-sm text-white"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="strategy 1"
               required
             />
 
-            <label className="mt-4 block text-sm font-medium">Symbol</label>
+            <label className="mt-4 block text-xs uppercase tracking-wide text-[var(--muted)]">
+              Symbol
+            </label>
             <input
-              className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+              className="mt-2 w-full rounded-lg border border-[#1f2e44] bg-[#0b1728] px-3 py-2 text-sm text-white"
               value={symbol}
               onChange={(e) => setSymbol(e.target.value)}
               placeholder="AAPL"
               required
             />
 
-            <label className="mt-4 block text-sm font-medium">
+            <label className="mt-4 block text-xs uppercase tracking-wide text-[var(--muted)]">
               Budget (USD)
             </label>
             <input
               type="number"
-              className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+              className="mt-2 w-full rounded-lg border border-[#1f2e44] bg-[#0b1728] px-3 py-2 text-sm text-white"
               value={budget}
               min={0.01}
               step={0.01}
               onChange={(e) => setBudget(Number(e.target.value))}
               required
             />
-            <div className="mt-1 text-xs text-gray-500">
+            <div className="mt-1 text-xs text-[var(--muted)]">
               Used by the strategy to limit how much it can trade.
             </div>
 
             <button
               disabled={loading || !userId || baseStrategies.length === 0}
-              className="mt-5 rounded-lg bg-black px-4 py-2 text-sm text-white disabled:opacity-60"
+              className="mt-5 rounded-lg bg-[#1f6feb] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
             >
               {loading ? "Working..." : "Create strategy"}
             </button>
           </form>
         </div>
 
-        <div className="rounded-xl border bg-white p-6 shadow">
+        <div className="rounded-2xl border border-[#132033] bg-[#0f1b2d] p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <div className="text-sm font-semibold">Your strategies</div>
-              <div className="mt-1 text-xs text-gray-600">
+              <div className="text-sm font-semibold">Your Strategies</div>
+              <div className="mt-1 text-xs text-[var(--muted)]">
                 Activate one to start producing orders.
               </div>
             </div>
 
             <button
               disabled={loading || !userId}
-              className="rounded-lg border px-4 py-2 text-sm disabled:opacity-60"
+              className="rounded-lg border border-[#1f2e44] px-4 py-2 text-sm text-white disabled:opacity-60"
               onClick={() => userId && loadAll(userId)}
               type="button"
             >
@@ -356,13 +422,13 @@ export default function StrategiesPage() {
           </div>
 
           {userStrategies.length === 0 ? (
-            <div className="mt-3 text-sm text-gray-600">
+            <div className="mt-3 text-sm text-[var(--muted)]">
               You have no strategies yet. Create one above.
             </div>
           ) : (
-            <div className="mt-4 overflow-auto rounded-lg border">
+            <div className="mt-4 overflow-auto rounded-lg border border-[#132033]">
               <table className="min-w-full text-sm">
-                <thead className="bg-gray-50 text-left">
+                <thead className="bg-[#0b1728] text-left text-xs text-[var(--muted)]">
                   <tr>
                     <th className="px-4 py-3">ID</th>
                     <th className="px-4 py-3">Name</th>
@@ -373,45 +439,115 @@ export default function StrategiesPage() {
                     <th className="px-4 py-3">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y">
-                  {userStrategies.map((s: any) => {
-                    const status = String(s?.status ?? "—");
+                <tbody className="divide-y divide-[#132033]">
+                  {[...userStrategies]
+                    .sort((a: any, b: any) => {
+                      const rank = (s: any) => {
+                        const status = String(s?.status ?? "");
+                        if (status === "ACTIVE") return 0;
+                        if (status === "PREPARING") return 1;
+                        if (status === "PAUSED") return 2;
+                        if (status === "CREATED") return 3;
+                        if (status === "STOPPED") return 4;
+                        return 5;
+                      };
+                      return rank(a) - rank(b);
+                    })
+                    .map((s: any) => {
+                    const status = String(s?.status ?? "-");
                     const disableActivate =
-                      loading || status === "ACTIVE" || status === "PREPARING";
+                      loading ||
+                      status === "ACTIVE" ||
+                      status === "PREPARING" ||
+                      status === "STOPPED";
+                    const canDelete = status === "CREATED" || status === "STOPPED";
+                    const canStop = status === "ACTIVE" || status === "PAUSED";
 
                     return (
                       <tr key={s.id}>
                         <td className="px-4 py-3 font-mono text-xs">{s.id}</td>
-                        <td className="px-4 py-3 font-medium">
-                          {s.name ?? "—"}
-                        </td>
+                      <td className="px-4 py-3 font-medium">
+                        {editingId === s.id ? (
+                          <input
+                            className="w-full rounded-md border border-[#1f2e44] bg-[#0b1728] px-2 py-1 text-xs text-white"
+                            value={editName}
+                            onChange={(e) => setEditName(e.target.value)}
+                          />
+                        ) : (
+                          s.name ?? "-"
+                        )}
+                      </td>
                         <td className="px-4 py-3">{getBaseCode(s)}</td>
-                        <td className="px-4 py-3">{s.symbol ?? "—"}</td>
-                        <td className="px-4 py-3">{String(s.budget ?? "—")}</td>
-                        <td className="px-4 py-3">
-                          <Badge text={status} />
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex flex-wrap gap-2">
-                            <button
-                              className="rounded-lg bg-black px-3 py-1.5 text-xs text-white disabled:opacity-60"
-                              disabled={disableActivate}
-                              onClick={() => void onActivate(s.id)}
-                              type="button"
-                            >
-                              Activate
-                            </button>
-
-                            <button
-                              className="rounded-lg border px-3 py-1.5 text-xs disabled:opacity-60"
-                              disabled={loading}
-                              onClick={() => void onDelete(s.id)}
-                              type="button"
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </td>
+                        <td className="px-4 py-3">{s.symbol ?? "-"}</td>
+                        <td className="px-4 py-3">{String(s.budget ?? "-")}</td>
+                      <td className="px-4 py-3">
+                        <Badge text={status} />
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap gap-2">
+                          {editingId === s.id ? (
+                            <>
+                              <button
+                                className="rounded-lg bg-[#1f6feb] px-3 py-1.5 text-xs text-white disabled:opacity-60"
+                                disabled={loading}
+                                onClick={() => void onSaveEdit(s.id)}
+                                type="button"
+                              >
+                                Save
+                              </button>
+                              <button
+                                className="rounded-lg border border-[#1f2e44] px-3 py-1.5 text-xs text-white disabled:opacity-60"
+                                disabled={loading}
+                                onClick={onCancelEdit}
+                                type="button"
+                              >
+                                Cancel
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                className="rounded-lg bg-[#1f6feb] px-3 py-1.5 text-xs text-white disabled:opacity-60"
+                                disabled={disableActivate}
+                                onClick={() => void onActivate(s.id)}
+                                type="button"
+                              >
+                                Activate
+                              </button>
+                              <button
+                                className="rounded-lg border border-[#1f2e44] px-3 py-1.5 text-xs text-white disabled:opacity-60"
+                                disabled={loading}
+                                onClick={() => void onStartEdit(s)}
+                                type="button"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                className="rounded-lg border border-[#1f2e44] px-3 py-1.5 text-xs text-white disabled:opacity-60"
+                                disabled={loading || !canStop}
+                                onClick={() => void onStop(s.id)}
+                                type="button"
+                                title={
+                                  canStop
+                                    ? "Stop strategy"
+                                    : "Only ACTIVE or PAUSED can be stopped"
+                                }
+                              >
+                                Stop
+                              </button>
+                              <button
+                                className="rounded-lg border border-[#1f2e44] px-3 py-1.5 text-xs text-white disabled:opacity-60"
+                                disabled={loading || !canDelete}
+                                onClick={() => void onDelete(s.id)}
+                                type="button"
+                                title="Delete strategy"
+                              >
+                                Delete
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
                       </tr>
                     );
                   })}
@@ -419,13 +555,6 @@ export default function StrategiesPage() {
               </table>
             </div>
           )}
-        </div>
-
-        <div className="rounded-xl border bg-white p-6 shadow">
-          <div className="text-sm font-semibold">Raw user strategies</div>
-          <pre className="mt-3 overflow-auto rounded-lg bg-gray-50 p-3 text-xs">
-            {JSON.stringify(userStrategies, null, 2)}
-          </pre>
         </div>
       </div>
     </div>
