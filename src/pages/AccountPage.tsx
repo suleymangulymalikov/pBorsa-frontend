@@ -1,19 +1,28 @@
-import { onAuthStateChanged } from "firebase/auth";
+import {
+  EmailAuthProvider,
+  deleteUser,
+  onAuthStateChanged,
+  reauthenticateWithCredential,
+  signOut,
+  updatePassword,
+} from "firebase/auth";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { auth } from "../lib/firebase";
 import { api } from "../api/client";
 
-// ✅ type-only import (FIX)
 import type { AccountInfo } from "../api/account";
-
-// ✅ value imports
 import {
   getAccountInfo,
   getPortfolioValue,
   getUnrealizedPnl,
   refreshAccountInfo,
 } from "../api/account";
+import {
+  deactivateCredentials,
+  getCredentialsStatus,
+  registerCredentials,
+} from "../api/credentials";
 
 type MeResponse = {
   id: number;
@@ -24,7 +33,7 @@ type MeResponse = {
 };
 
 function fmtMoney(v: unknown) {
-  if (v === null || v === undefined || v === "") return "—";
+  if (v === null || v === undefined || v === "") return "-";
   const n = typeof v === "string" ? Number(v) : (v as number);
   if (Number.isNaN(n)) return String(v);
   return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
@@ -43,10 +52,25 @@ export default function AccountPage() {
   const [unrealizedPnl, setUnrealizedPnl] = useState<string | number | null>(
     null,
   );
+  const [hasCreds, setHasCreds] = useState<boolean | null>(null);
+  const [apiKey, setApiKey] = useState("");
+  const [secretKey, setSecretKey] = useState("");
+  const [paperTrading, setPaperTrading] = useState(true);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [passwordMessage, setPasswordMessage] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteMessage, setDeleteMessage] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [section, setSection] = useState<
+    "profile" | "portfolio" | "security" | "credentials" | "actions"
+  >("profile");
 
   const canTrade = useMemo(() => {
     if (!account) return null;
@@ -63,20 +87,23 @@ export default function AccountPage() {
     setMessage(null);
 
     try {
-      const [acc, pv, pnl] = await Promise.all([
+      const [acc, pv, pnl, creds] = await Promise.all([
         getAccountInfo(uid),
         getPortfolioValue(uid),
         getUnrealizedPnl(uid),
+        getCredentialsStatus(uid),
       ]);
 
       setAccount(acc);
       setPortfolioValue(pv);
       setUnrealizedPnl(pnl);
+      setHasCreds(creds);
     } catch (e: any) {
       setError(e?.message ?? "Failed to load account info");
       setAccount(null);
       setPortfolioValue(null);
       setUnrealizedPnl(null);
+      setHasCreds(null);
     } finally {
       setLoading(false);
     }
@@ -129,99 +156,471 @@ export default function AccountPage() {
     }
   };
 
-  return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="mx-auto max-w-4xl space-y-6">
-        <div className="rounded-xl border bg-white p-6 shadow">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h1 className="text-2xl font-semibold">Account</h1>
-              <p className="mt-2 text-sm text-gray-700">
-                Alpaca account summary for{" "}
-                <span className="font-medium">{me?.email ?? "..."}</span>
-              </p>
-            </div>
+  const onSaveCreds = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userId) return;
 
+    setLoading(true);
+    setError(null);
+    setMessage(null);
+
+    try {
+      await registerCredentials(userId, { apiKey, secretKey, paperTrading });
+      setMessage("Alpaca credentials saved.");
+      setApiKey("");
+      setSecretKey("");
+      const status = await getCredentialsStatus(userId);
+      setHasCreds(status);
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to save credentials");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onDeactivateCreds = async () => {
+    if (!userId) return;
+
+    setLoading(true);
+    setError(null);
+    setMessage(null);
+
+    try {
+      await deactivateCredentials(userId);
+      setHasCreds(false);
+      setMessage("Credentials deactivated.");
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to deactivate credentials");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordError(null);
+    setPasswordMessage(null);
+
+    if (!me?.email) {
+      setPasswordError("Email not available.");
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      setPasswordError("New passwords do not match.");
+      return;
+    }
+    if (newPassword.length < 8) {
+      setPasswordError("New password must be at least 8 characters.");
+      return;
+    }
+
+    const user = auth.currentUser;
+    if (!user) {
+      setPasswordError("Not authenticated.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const credential = EmailAuthProvider.credential(
+        me.email,
+        currentPassword,
+      );
+      await reauthenticateWithCredential(user, credential);
+      await updatePassword(user, newPassword);
+      setPasswordMessage("Password updated.");
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmNewPassword("");
+    } catch (e: any) {
+      setPasswordError(e?.message ?? "Failed to update password.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onDeleteAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setDeleteError(null);
+    setDeleteMessage(null);
+
+    const user = auth.currentUser;
+    if (!user || !me?.email) {
+      setDeleteError("Not authenticated.");
+      return;
+    }
+    if (!deletePassword) {
+      setDeleteError("Please enter your password to confirm.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const credential = EmailAuthProvider.credential(
+        me.email,
+        deletePassword,
+      );
+      await reauthenticateWithCredential(user, credential);
+      await deleteUser(user);
+      setDeleteMessage("Account deleted.");
+      nav("/login");
+    } catch (e: any) {
+      setDeleteError(e?.message ?? "Failed to delete account.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-[var(--page-bg)] text-white">
+      <div className="mx-auto max-w-6xl px-6 py-10">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold">Account Settings</h1>
+            <p className="mt-2 text-sm text-[var(--muted)]">
+              Manage your profile, Alpaca credentials, and portfolio summary.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
             <button
               onClick={onRefresh}
               disabled={loading || !userId}
-              className="rounded-lg bg-black px-4 py-2 text-sm text-white disabled:opacity-60"
+              className="rounded-lg border border-[#1f2e44] px-4 py-2 text-sm text-white disabled:opacity-60"
             >
               {loading ? "Loading..." : "Refresh from Alpaca"}
             </button>
-          </div>
-
-          {message && (
-            <div className="mt-4 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800">
-              {message}
-            </div>
-          )}
-          {error && (
-            <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-              {error}
-            </div>
-          )}
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="rounded-xl border bg-white p-5 shadow">
-            <div className="text-sm font-semibold">Cash</div>
-            <div className="mt-2 text-2xl font-semibold">
-              {fmtMoney(account?.cash)} {account?.currency ?? ""}
-            </div>
-            <div className="mt-2 text-xs text-gray-600">
-              Buying power: {fmtMoney(account?.buyingPower)}
-            </div>
-          </div>
-
-          <div className="rounded-xl border bg-white p-5 shadow">
-            <div className="text-sm font-semibold">Equity</div>
-            <div className="mt-2 text-2xl font-semibold">
-              {fmtMoney(account?.equity)} {account?.currency ?? ""}
-            </div>
-            <div className="mt-2 text-xs text-gray-600">
-              Last equity: {fmtMoney(account?.lastEquity)}
-            </div>
-          </div>
-
-          <div className="rounded-xl border bg-white p-5 shadow">
-            <div className="text-sm font-semibold">Portfolio value</div>
-            <div className="mt-2 text-2xl font-semibold">
-              {fmtMoney(portfolioValue)} {account?.currency ?? ""}
-            </div>
-            <div className="mt-2 text-xs text-gray-600">
-              Long MV: {fmtMoney(account?.longMarketValue)} · Short MV:{" "}
-              {fmtMoney(account?.shortMarketValue)}
-            </div>
-          </div>
-
-          <div className="rounded-xl border bg-white p-5 shadow">
-            <div className="text-sm font-semibold">Unrealized P&amp;L</div>
-            <div className="mt-2 text-2xl font-semibold">
-              {fmtMoney(unrealizedPnl)} {account?.currency ?? ""}
-            </div>
-            <div className="mt-2 text-xs text-gray-600">
-              Can trade:{" "}
-              {canTrade === null ? (
-                "—"
-              ) : canTrade ? (
-                <span className="font-medium text-green-700">Yes</span>
-              ) : (
-                <span className="font-medium text-red-700">No</span>
-              )}
-            </div>
+            <button
+              onClick={() => signOut(auth)}
+              className="rounded-lg border border-[#1f2e44] px-4 py-2 text-sm text-white"
+            >
+              Sign out
+            </button>
           </div>
         </div>
 
-        <div className="rounded-xl border bg-white p-6 shadow">
-          <div className="text-sm font-semibold">Details</div>
-          {account ? (
-            <pre className="mt-3 overflow-auto rounded-lg bg-gray-50 p-3 text-xs">
-              {JSON.stringify(account, null, 2)}
-            </pre>
-          ) : (
-            <div className="mt-3 text-sm text-gray-600">No data</div>
-          )}
+        {message && (
+          <div className="mt-4 rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm text-emerald-200">
+            {message}
+          </div>
+        )}
+        {error && (
+          <div className="mt-4 rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
+            {error}
+          </div>
+        )}
+
+        <div className="mt-8 grid gap-6 lg:grid-cols-[240px_1fr]">
+          <aside className="rounded-2xl border border-[#132033] bg-[#0f1b2d] p-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#132033] text-white">
+                {me?.displayName?.[0]?.toUpperCase() ?? "U"}
+              </div>
+              <div>
+                <div className="text-sm font-semibold">
+                  {me?.displayName ?? "User"}
+                </div>
+                <div className="text-xs text-[var(--muted)]">
+                  {me?.email ?? "Loading..."}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 space-y-2 text-xs text-[var(--muted)]">
+              {[
+                { id: "profile", label: "Profile" },
+                { id: "portfolio", label: "Portfolio" },
+                { id: "security", label: "Security" },
+                { id: "credentials", label: "Credentials" },
+                { id: "actions", label: "Account Actions" },
+              ].map((item) => (
+                <button
+                  key={item.id}
+                  className={`w-full rounded-lg px-3 py-2 text-left ${
+                    section === item.id
+                      ? "bg-[#132033] text-white"
+                      : "hover:bg-[#132033]/60"
+                  }`}
+                  onClick={() =>
+                    setSection(item.id as typeof section)
+                  }
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </aside>
+
+          <div className="space-y-6">
+            {section === "profile" && (
+              <section className="rounded-2xl border border-[#132033] bg-[#0f1b2d] p-6">
+                <div className="text-sm font-semibold">Profile</div>
+                <div className="mt-2 text-xs text-[var(--muted)]">
+                  Update your personal details.
+                </div>
+                <div className="mt-6 grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                      Full Name
+                    </label>
+                    <input
+                      className="mt-2 w-full rounded-lg border border-[#1f2e44] bg-[#0b1728] px-3 py-2 text-sm text-white opacity-80"
+                      value={me?.displayName ?? ""}
+                      readOnly
+                      disabled
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                      Email Address
+                    </label>
+                    <input
+                      className="mt-2 w-full rounded-lg border border-[#1f2e44] bg-[#0b1728] px-3 py-2 text-sm text-white opacity-80"
+                      value={me?.email ?? ""}
+                      readOnly
+                      disabled
+                    />
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {section === "portfolio" && (
+              <section className="rounded-2xl border border-[#132033] bg-[#0f1b2d] p-6">
+                <div className="text-sm font-semibold">Portfolio Snapshot</div>
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  <div className="rounded-xl border border-[#1a2b45] bg-[#0b1728] p-4">
+                    <div className="text-xs text-[var(--muted)]">Cash</div>
+                    <div className="mt-2 text-2xl font-semibold">
+                      {fmtMoney(account?.cash)} {account?.currency ?? ""}
+                    </div>
+                    <div className="mt-2 text-xs text-[var(--muted)]">
+                      Buying power: {fmtMoney(account?.buyingPower)}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-[#1a2b45] bg-[#0b1728] p-4">
+                    <div className="text-xs text-[var(--muted)]">Equity</div>
+                    <div className="mt-2 text-2xl font-semibold">
+                      {fmtMoney(account?.equity)} {account?.currency ?? ""}
+                    </div>
+                    <div className="mt-2 text-xs text-[var(--muted)]">
+                      Last equity: {fmtMoney(account?.lastEquity)}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-[#1a2b45] bg-[#0b1728] p-4">
+                    <div className="text-xs text-[var(--muted)]">Total Value</div>
+                    <div className="mt-2 text-2xl font-semibold">
+                      {fmtMoney(portfolioValue)} {account?.currency ?? ""}
+                    </div>
+                    <div className="mt-2 text-xs text-[var(--muted)]">
+                      Long MV: {fmtMoney(account?.longMarketValue)} | Short MV:{" "}
+                      {fmtMoney(account?.shortMarketValue)}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-[#1a2b45] bg-[#0b1728] p-4">
+                    <div className="text-xs text-[var(--muted)]">
+                      Unrealized P&L
+                    </div>
+                    <div className="mt-2 text-2xl font-semibold">
+                      {fmtMoney(unrealizedPnl)} {account?.currency ?? ""}
+                    </div>
+                    <div className="mt-2 text-xs text-[var(--muted)]">
+                      Can trade:{" "}
+                      {canTrade === null ? (
+                        "-"
+                      ) : canTrade ? (
+                        <span className="text-emerald-300">Yes</span>
+                      ) : (
+                        <span className="text-red-300">No</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {section === "security" && (
+              <section className="rounded-2xl border border-[#132033] bg-[#0f1b2d] p-6">
+                <div className="text-sm font-semibold">Security</div>
+                <div className="mt-2 text-xs text-[var(--muted)]">
+                  Change your password for this account.
+                </div>
+                <form onSubmit={onChangePassword} className="mt-4 grid gap-4">
+                  <div>
+                    <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                      Current Password
+                    </label>
+                    <input
+                      className="mt-2 w-full rounded-lg border border-[#1f2e44] bg-[#0b1728] px-3 py-2 text-sm text-white"
+                      type="password"
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                        New Password
+                      </label>
+                      <input
+                        className="mt-2 w-full rounded-lg border border-[#1f2e44] bg-[#0b1728] px-3 py-2 text-sm text-white"
+                        type="password"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                        Confirm Password
+                      </label>
+                      <input
+                        className="mt-2 w-full rounded-lg border border-[#1f2e44] bg-[#0b1728] px-3 py-2 text-sm text-white"
+                        type="password"
+                        value={confirmNewPassword}
+                        onChange={(e) => setConfirmNewPassword(e.target.value)}
+                        required
+                      />
+                    </div>
+                  </div>
+                  {passwordError && (
+                    <div className="rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-xs text-red-200">
+                      {passwordError}
+                    </div>
+                  )}
+                  {passwordMessage && (
+                    <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 text-xs text-emerald-200">
+                      {passwordMessage}
+                    </div>
+                  )}
+                  <div className="flex justify-end">
+                    <button
+                      type="submit"
+                      className="rounded-lg bg-[#1f6feb] px-4 py-2 text-xs font-semibold text-white"
+                      disabled={loading}
+                    >
+                      Update Password
+                    </button>
+                  </div>
+                </form>
+              </section>
+            )}
+
+            {section === "credentials" && (
+              <section className="rounded-2xl border border-[#132033] bg-[#0f1b2d] p-6">
+                <div className="text-sm font-semibold">Alpaca Credentials</div>
+                <div className="mt-2 text-xs text-[var(--muted)]">
+                  Connect your Alpaca account to enable trading and market data.
+                </div>
+                <div className="mt-4 flex items-center gap-3 text-xs">
+                  <span>Status:</span>
+                  <span
+                    className={`rounded-full px-2 py-0.5 ${
+                      hasCreds
+                        ? "bg-emerald-500/10 text-emerald-300"
+                        : "bg-amber-500/10 text-amber-300"
+                    }`}
+                  >
+                    {hasCreds ? "Connected" : "Not set"}
+                  </span>
+                </div>
+
+                <form
+                  onSubmit={onSaveCreds}
+                  className="mt-5 grid gap-4 md:grid-cols-2"
+                >
+                  <div>
+                    <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                      API Key
+                    </label>
+                    <input
+                      className="mt-2 w-full rounded-lg border border-[#1f2e44] bg-[#0b1728] px-3 py-2 text-sm text-white"
+                      value={apiKey}
+                      onChange={(e) => setApiKey(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                      Secret Key
+                    </label>
+                    <input
+                      className="mt-2 w-full rounded-lg border border-[#1f2e44] bg-[#0b1728] px-3 py-2 text-sm text-white"
+                      value={secretKey}
+                      onChange={(e) => setSecretKey(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <label className="flex items-center gap-2 text-xs text-[var(--muted)]">
+                    <input
+                      type="checkbox"
+                      checked={paperTrading}
+                      onChange={(e) => setPaperTrading(e.target.checked)}
+                      className="h-4 w-4 rounded border-[#1f2e44] bg-[#0b1728] text-[var(--accent)] focus:ring-[var(--accent)]/60"
+                    />
+                    Paper trading
+                  </label>
+                  <div className="flex items-center justify-end gap-3">
+                    <button
+                      type="button"
+                      className="rounded-lg border border-[#1f2e44] px-3 py-2 text-xs text-white"
+                      disabled={loading || !userId}
+                      onClick={onDeactivateCreds}
+                    >
+                      Deactivate
+                    </button>
+                    <button
+                      type="submit"
+                      className="rounded-lg bg-[#1f6feb] px-4 py-2 text-xs font-semibold text-white"
+                      disabled={loading || !userId}
+                    >
+                      Save Credentials
+                    </button>
+                  </div>
+                </form>
+              </section>
+            )}
+
+            {section === "actions" && (
+              <section className="rounded-2xl border border-[#2a1a1a] bg-[#1a0f12] p-6">
+                <div className="text-sm font-semibold text-red-300">
+                  Account Actions
+                </div>
+                <div className="mt-2 text-xs text-red-200/70">
+                  Deleting your account only removes the Firebase login.
+                </div>
+                <form onSubmit={onDeleteAccount} className="mt-4 space-y-3">
+                  <input
+                    className="w-full rounded-lg border border-red-500/40 bg-[#140b0d] px-3 py-2 text-sm text-red-100 placeholder:text-red-300/50"
+                    type="password"
+                    placeholder="Confirm password to delete"
+                    value={deletePassword}
+                    onChange={(e) => setDeletePassword(e.target.value)}
+                    required
+                  />
+                  {deleteError && (
+                    <div className="rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-xs text-red-200">
+                      {deleteError}
+                    </div>
+                  )}
+                  {deleteMessage && (
+                    <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 text-xs text-emerald-200">
+                      {deleteMessage}
+                    </div>
+                  )}
+                  <button
+                    className="rounded-lg border border-red-500/40 px-4 py-2 text-xs text-red-200"
+                    disabled={loading}
+                  >
+                    Delete account
+                  </button>
+                </form>
+              </section>
+            )}
+          </div>
         </div>
       </div>
     </div>
