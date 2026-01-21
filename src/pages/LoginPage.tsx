@@ -121,7 +121,10 @@ export default function LoginPage() {
                 </Link>
               </div>
 
-              <div className="mt-8 flex justify-center gap-4 text-[10px] text-[var(--muted)]"></div>
+              <div className="mt-8 flex justify-center gap-4 text-[10px] text-[var(--muted)]">
+                <span>Terms of Service</span>
+                <span>Privacy Policy</span>
+              </div>
             </form>
           </div>
         </section>
