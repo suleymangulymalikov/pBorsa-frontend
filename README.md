@@ -1,114 +1,77 @@
 # pBorsa Frontend
 
-Frontend application for the **pBorsa** project.
+React + Vite frontend for pBorsa.
 
-Built with:
+## Requirements
 
-- React (Vite)
-- TypeScript
-- Firebase Authentication
-- Tailwind CSS
-
----
-
-## 1. Requirements
-
-Make sure you have installed:
-
-- Node.js **v18+**
+- Node.js 18+
 - npm
 
----
-
-## 2. Setup & Run
+## Setup
 
 ```bash
 npm install
 npm run dev
 ```
 
-The app will be available at:
+App runs at `http://localhost:5173`.
+
+## Environment
+
+Create `pBorsa-frontend/.env.local`:
 
 ```
-http://localhost:5173
+VITE_API_BASE_URL=http://localhost:8081
+VITE_FIREBASE_API_KEY=...
+VITE_FIREBASE_AUTH_DOMAIN=...
+VITE_FIREBASE_PROJECT_ID=...
+VITE_FIREBASE_STORAGE_BUCKET=...
+VITE_FIREBASE_MESSAGING_SENDER_ID=...
+VITE_FIREBASE_APP_ID=...
 ```
 
----
+## Firebase
 
-## 3. Firebase Authentication
-
-Authentication is handled using **Firebase Auth**.
-
-### Required file
-
-Create a file:
+Firebase Auth is used for login. Configuration lives in:
 
 ```
 src/lib/firebase.ts
 ```
 
-Example structure:
+Do not commit real credentials.
 
-```ts
-import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+## Backend API
 
-const firebaseConfig = {
-  apiKey: "...",
-  authDomain: "...",
-  projectId: "...",
-  appId: "...",
-};
-
-const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
-```
-
-⚠️ **Do NOT commit real Firebase credentials**
-Use `.env` or local config.
-
----
-
-## 4. Backend API
-
-Backend runs on:
+The frontend calls:
 
 ```
 http://localhost:8081
 ```
 
-Authenticated requests must include a Firebase **ID token**:
+Requests are authenticated with a Firebase ID token. The app attaches this automatically.
 
-```
-Authorization: Bearer <FIREBASE_ID_TOKEN>
-```
-
-The frontend automatically attaches the token using Axios interceptors.
-
-Example endpoint:
-
-```
-GET /api/v1/users/me
-```
-
----
-
-## 5. Project Structure
+## Project structure
 
 ```
 src/
-├── api/          # Backend API calls
-├── lib/          # Firebase config
-├── pages/        # Route pages
-├── components/   # Reusable UI components
-└── main.tsx
+  api/          backend API calls
+  lib/          Firebase config
+  pages/        route pages
+  components/   shared UI
+  main.tsx
 ```
 
----
+## Features
 
-### Authentication flow
+- Auth: Firebase email/password
+- Dashboard: strategy summary + portfolio stats
+- Account: profile, portfolio snapshot, security, Alpaca credentials
+- Market Data: quote + bars, snapshot, polling
+- Strategies: create, edit name, activate/stop
+- Orders: list by strategy, detail + status history
+- Positions: open positions + summary
 
-- Firebase Authentication on frontend
-- Firebase ID token sent as:
-  Authorization: Bearer <token>
-- Backend verifies token and maps user by firebaseUid
+## First-time user
+
+If Alpaca credentials are not set, the dashboard shows a prompt to configure them.
+Go to Account -> Credentials and add your API key + secret.
