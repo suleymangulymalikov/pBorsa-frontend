@@ -27,10 +27,31 @@ type MeResponse = {
 type UiTf = "1Min" | "5Min" | "15Min" | "1Hour" | "1Day";
 
 function fmtNum(v: unknown) {
-  if (v === null || v === undefined || v === "") return "—";
+  if (v === null || v === undefined || v === "") return "-";
   const n = typeof v === "string" ? Number(v) : (v as number);
   if (Number.isNaN(n)) return String(v);
   return n.toLocaleString(undefined, { maximumFractionDigits: 4 });
+}
+
+function fmtTime(value: unknown) {
+  if (!value) return "-";
+  const d = new Date(String(value));
+  if (Number.isNaN(d.getTime())) return String(value);
+  return d.toLocaleString();
+}
+
+function buildSparkPath(values: number[], height = 72) {
+  if (values.length < 2) return "";
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = max - min || 1;
+  return values
+    .map((v, i) => {
+      const x = (i / (values.length - 1)) * 100;
+      const y = height - ((v - min) / span) * height;
+      return `${i === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
+    })
+    .join(" ");
 }
 
 function tfToBackend(tf: UiTf): { timeframe: number; period: Period } {
@@ -244,31 +265,46 @@ export default function MarketDataPage() {
     }
   };
 
+  const quoteSpread =
+    quote?.askPrice !== undefined && quote?.bidPrice !== undefined
+      ? quote.askPrice - quote.bidPrice
+      : null;
+  const sparkValues = useMemo(
+    () =>
+      bars
+        .map((b) => (typeof b.close === "number" ? b.close : null))
+        .filter((v): v is number => v !== null),
+    [bars],
+  );
+  const sparkPath = useMemo(
+    () => buildSparkPath(sparkValues),
+    [sparkValues],
+  );
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="mx-auto max-w-6xl space-y-6">
-        <div className="rounded-xl border bg-white p-6 shadow">
-          <div className="flex flex-wrap items-start justify-between gap-3">
+    <div className="min-h-screen bg-[var(--page-bg)] text-white">
+      <div className="mx-auto max-w-6xl space-y-6 px-6 py-10">
+        <div className="rounded-2xl border border-[#132033] bg-[#0f1b2d] p-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <h1 className="text-2xl font-semibold">Market Data</h1>
-              <p className="mt-2 text-sm text-gray-700">
-                Quote + historical bars for{" "}
-                <span className="font-medium">{me?.email ?? "..."}</span>
+              <p className="mt-2 text-sm text-[var(--muted)]">
+                Quotes, bars, snapshots, and polling for{" "}
+                <span className="text-white">{me?.email ?? "..."}</span>
               </p>
             </div>
           </div>
 
           <form onSubmit={onFetch} className="mt-5 flex flex-wrap gap-3">
             <input
-              className="w-40 rounded-lg border px-3 py-2 text-sm"
+              className="w-40 rounded-lg border border-[#1f2e44] bg-[#0b1728] px-3 py-2 text-sm text-white"
               value={symbol}
               onChange={(e) => setSymbol(e.target.value)}
               placeholder="AAPL"
             />
 
             <select
-              className="rounded-lg border px-3 py-2 text-sm"
+              className="rounded-lg border border-[#1f2e44] bg-[#0b1728] px-3 py-2 text-sm text-white"
               value={uiTf}
               onChange={(e) => setUiTf(e.target.value as UiTf)}
             >
@@ -281,7 +317,7 @@ export default function MarketDataPage() {
 
             <input
               type="number"
-              className="w-28 rounded-lg border px-3 py-2 text-sm"
+              className="w-28 rounded-lg border border-[#1f2e44] bg-[#0b1728] px-3 py-2 text-sm text-white"
               value={limit}
               min={1}
               max={500}
@@ -290,164 +326,334 @@ export default function MarketDataPage() {
 
             <button
               disabled={loading || !userId}
-              className="rounded-lg bg-black px-4 py-2 text-sm text-white disabled:opacity-60"
+              className="rounded-lg bg-[#1f6feb] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
             >
               {loading ? "Loading..." : "Fetch"}
             </button>
           </form>
 
           {message && (
-            <div className="mt-4 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800">
+            <div className="mt-4 rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm text-emerald-200">
               {message}
             </div>
           )}
           {error && (
-            <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            <div className="mt-4 rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
               {error}
             </div>
           )}
         </div>
 
         <div className="grid gap-4 md:grid-cols-2">
-          <div className="rounded-xl border bg-white p-6 shadow">
+          <div className="rounded-2xl border border-[#132033] bg-[#0f1b2d] p-6">
             <div className="text-sm font-semibold">Quote</div>
             {quote ? (
-              <div className="mt-3 space-y-2 text-sm">
-                <div>
-                  <span className="text-gray-600">Symbol:</span>{" "}
-                  <span className="font-medium">
-                    {quote.symbol ?? normalizedSymbol}
-                  </span>
+              <div className="mt-4 grid gap-4">
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="rounded-lg border border-[#132033] bg-[#0b1728] p-4">
+                    <div className="text-xs text-[var(--muted)]">Symbol</div>
+                    <div className="mt-1 text-lg font-semibold">
+                      {quote.symbol ?? normalizedSymbol}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-[#132033] bg-[#0b1728] p-4">
+                    <div className="text-xs text-[var(--muted)]">Timestamp</div>
+                    <div className="mt-1 text-sm">
+                      {fmtTime(quote.timestamp)}
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <span className="text-gray-600">Bid:</span>{" "}
-                  <span className="font-medium">{fmtNum(quote.bidPrice)}</span>{" "}
-                  <span className="text-gray-500">
-                    ({fmtNum(quote.bidSize)})
-                  </span>
+                <div className="grid gap-3 md:grid-cols-3">
+                  <div className="rounded-lg border border-[#132033] bg-[#0b1728] p-4">
+                    <div className="text-xs text-[var(--muted)]">Bid</div>
+                    <div className="mt-1 text-lg font-semibold">
+                      {fmtNum(quote.bidPrice)}
+                    </div>
+                    <div className="text-xs text-[var(--muted)]">
+                      Size {fmtNum(quote.bidSize)}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-[#132033] bg-[#0b1728] p-4">
+                    <div className="text-xs text-[var(--muted)]">Ask</div>
+                    <div className="mt-1 text-lg font-semibold">
+                      {fmtNum(quote.askPrice)}
+                    </div>
+                    <div className="text-xs text-[var(--muted)]">
+                      Size {fmtNum(quote.askSize)}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-[#132033] bg-[#0b1728] p-4">
+                    <div className="text-xs text-[var(--muted)]">Spread</div>
+                    <div className="mt-1 text-lg font-semibold">
+                      {quoteSpread === null ? "-" : fmtNum(quoteSpread)}
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <span className="text-gray-600">Ask:</span>{" "}
-                  <span className="font-medium">{fmtNum(quote.askPrice)}</span>{" "}
-                  <span className="text-gray-500">
-                    ({fmtNum(quote.askSize)})
-                  </span>
-                </div>
-
-                <pre className="mt-3 overflow-auto rounded-lg bg-gray-50 p-3 text-xs">
-                  {JSON.stringify(quote, null, 2)}
-                </pre>
               </div>
             ) : (
-              <div className="mt-3 text-sm text-gray-600">No quote loaded.</div>
+              <div className="mt-3 text-sm text-[var(--muted)]">
+                No quote loaded.
+              </div>
             )}
           </div>
 
-          <div className="rounded-xl border bg-white p-6 shadow">
+          <div className="rounded-2xl border border-[#132033] bg-[#0f1b2d] p-6">
             <div className="text-sm font-semibold">Bars</div>
             {bars.length === 0 ? (
-              <div className="mt-3 text-sm text-gray-600">No bars loaded.</div>
-            ) : (
-              <div className="mt-4 overflow-auto rounded-lg border">
-                <table className="min-w-full text-sm">
-                  <thead className="bg-gray-50 text-left">
-                    <tr>
-                      <th className="px-4 py-3">Time</th>
-                      <th className="px-4 py-3">Open</th>
-                      <th className="px-4 py-3">High</th>
-                      <th className="px-4 py-3">Low</th>
-                      <th className="px-4 py-3">Close</th>
-                      <th className="px-4 py-3">Volume</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {bars.map((b, idx) => (
-                      <tr key={idx}>
-                        <td className="px-4 py-3">
-                          {b.timestamp ? String(b.timestamp) : "—"}
-                        </td>
-                        <td className="px-4 py-3">{fmtNum(b.open)}</td>
-                        <td className="px-4 py-3">{fmtNum(b.high)}</td>
-                        <td className="px-4 py-3">{fmtNum(b.low)}</td>
-                        <td className="px-4 py-3">{fmtNum(b.close)}</td>
-                        <td className="px-4 py-3">{fmtNum(b.volume)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="mt-3 text-sm text-[var(--muted)]">
+                No bars loaded.
               </div>
+            ) : (
+              <>
+                <div className="mt-4 rounded-lg border border-[#132033] bg-[#0b1728] p-4">
+                  <div className="text-xs text-[var(--muted)]">Close trend</div>
+                  <div className="mt-2 h-[90px] w-full">
+                    {sparkPath ? (
+                      <svg viewBox="0 0 100 72" className="h-full w-full">
+                        <defs>
+                          <linearGradient
+                            id="sparkLine"
+                            x1="0"
+                            y1="0"
+                            x2="1"
+                            y2="1"
+                          >
+                            <stop offset="0%" stopColor="#38bdf8" />
+                            <stop offset="100%" stopColor="#22c55e" />
+                          </linearGradient>
+                        </defs>
+                        <path
+                          d={sparkPath}
+                          fill="none"
+                          stroke="url(#sparkLine)"
+                          strokeWidth="2"
+                        />
+                      </svg>
+                    ) : (
+                      <div className="text-xs text-[var(--muted)]">
+                        Not enough data for a chart.
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="mt-4 max-h-[360px] overflow-auto rounded-lg border border-[#132033]">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-[#0b1728] text-left text-xs text-[var(--muted)]">
+                      <tr>
+                        <th className="px-4 py-3">Time</th>
+                        <th className="px-4 py-3">Open</th>
+                        <th className="px-4 py-3">High</th>
+                        <th className="px-4 py-3">Low</th>
+                        <th className="px-4 py-3">Close</th>
+                        <th className="px-4 py-3">Volume</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#132033]">
+                      {bars.map((b, idx) => (
+                        <tr key={idx}>
+                          <td className="px-4 py-3">
+                            {fmtTime(b.timestamp)}
+                          </td>
+                          <td className="px-4 py-3">{fmtNum(b.open)}</td>
+                          <td className="px-4 py-3">{fmtNum(b.high)}</td>
+                          <td className="px-4 py-3">{fmtNum(b.low)}</td>
+                          <td className="px-4 py-3">{fmtNum(b.close)}</td>
+                          <td className="px-4 py-3">{fmtNum(b.volume)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             )}
           </div>
         </div>
 
-        <div className="rounded-xl border bg-white p-6 shadow">
-          <div className="text-sm font-semibold">Snapshot</div>
-          <div className="mt-3 flex flex-wrap gap-3">
-            <input
-              className="min-w-[260px] rounded-lg border px-3 py-2 text-sm"
-              value={pollSymbols}
-              onChange={(e) => setPollSymbols(e.target.value)}
-              placeholder="AAPL,MSFT,NVDA"
-            />
-            <button
-              disabled={loading || !userId || normalizedPollSymbols.length === 0}
-              className="rounded-lg bg-black px-4 py-2 text-sm text-white disabled:opacity-60"
-              onClick={() => void onSnapshot()}
-            >
-              {loading ? "Loading..." : "Load snapshot"}
-            </button>
+        <div className="rounded-2xl border border-[#132033] bg-[#0f1b2d] p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="text-sm font-semibold">Snapshot</div>
+              <div className="mt-1 text-xs text-[var(--muted)]">
+                Quick view for multiple symbols.
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <input
+                className="min-w-[260px] rounded-lg border border-[#1f2e44] bg-[#0b1728] px-3 py-2 text-sm text-white"
+                value={pollSymbols}
+                onChange={(e) => setPollSymbols(e.target.value)}
+                placeholder="AAPL,MSFT,NVDA"
+              />
+              <button
+                disabled={
+                  loading || !userId || normalizedPollSymbols.length === 0
+                }
+                className="rounded-lg bg-[#1f6feb] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                onClick={() => void onSnapshot()}
+              >
+                {loading ? "Loading..." : "Load snapshot"}
+              </button>
+            </div>
           </div>
 
           {snapshot ? (
-            <div className="mt-4 grid gap-4 md:grid-cols-3">
-              <div className="rounded-lg border p-3">
-                <div className="text-xs font-semibold text-gray-600">
-                  Quotes
+            <>
+              <div className="mt-4 grid gap-4 md:grid-cols-3">
+                <div className="rounded-xl border border-[#132033] bg-[#0b1728] p-4">
+                  <div className="text-xs text-[var(--muted)]">Quotes</div>
+                  <div className="mt-2 text-2xl font-semibold">
+                    {(snapshot.quotes ?? []).length}
+                  </div>
                 </div>
-                <div className="mt-2 text-sm">
-                  {(snapshot.quotes ?? []).length} items
+                <div className="rounded-xl border border-[#132033] bg-[#0b1728] p-4">
+                  <div className="text-xs text-[var(--muted)]">Latest trades</div>
+                  <div className="mt-2 text-2xl font-semibold">
+                    {(snapshot.latestTrades ?? []).length}
+                  </div>
                 </div>
-              </div>
-              <div className="rounded-lg border p-3">
-                <div className="text-xs font-semibold text-gray-600">
-                  Latest trades
-                </div>
-                <div className="mt-2 text-sm">
-                  {(snapshot.latestTrades ?? []).length} items
-                </div>
-              </div>
-              <div className="rounded-lg border p-3">
-                <div className="text-xs font-semibold text-gray-600">
-                  Latest bars
-                </div>
-                <div className="mt-2 text-sm">
-                  {(snapshot.latestBars ?? []).length} items
+                <div className="rounded-xl border border-[#132033] bg-[#0b1728] p-4">
+                  <div className="text-xs text-[var(--muted)]">Latest bars</div>
+                  <div className="mt-2 text-2xl font-semibold">
+                    {(snapshot.latestBars ?? []).length}
+                  </div>
                 </div>
               </div>
-            </div>
-          ) : (
-            <div className="mt-3 text-sm text-gray-600">No snapshot loaded.</div>
-          )}
 
-          {snapshot && (
-            <pre className="mt-4 overflow-auto rounded-lg bg-gray-50 p-3 text-xs">
-              {JSON.stringify(snapshot, null, 2)}
-            </pre>
+              <div className="mt-5 grid gap-4 md:grid-cols-3">
+                <div className="rounded-lg border border-[#132033] bg-[#0b1728] p-4">
+                  <div className="text-xs text-[var(--muted)]">Quotes</div>
+                  {(snapshot.quotes ?? []).length === 0 ? (
+                    <div className="mt-2 text-xs text-[var(--muted)]">
+                      No quotes in snapshot.
+                    </div>
+                  ) : (
+                    <div className="mt-3 max-h-[200px] overflow-auto">
+                      <table className="min-w-full text-xs">
+                        <thead className="text-left text-[var(--muted)]">
+                          <tr>
+                            <th className="py-1 pr-2">Symbol</th>
+                            <th className="py-1 pr-2">Bid</th>
+                            <th className="py-1 pr-2">Ask</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-[#132033]">
+                          {(snapshot.quotes ?? []).slice(0, 8).map((q, idx) => (
+                            <tr key={`${q.symbol ?? "sym"}-${idx}`}>
+                              <td className="py-1 pr-2 font-semibold">
+                                {q.symbol ?? "-"}
+                              </td>
+                              <td className="py-1 pr-2">{fmtNum(q.bidPrice)}</td>
+                              <td className="py-1 pr-2">{fmtNum(q.askPrice)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-lg border border-[#132033] bg-[#0b1728] p-4">
+                  <div className="text-xs text-[var(--muted)]">Latest trades</div>
+                  {(snapshot.latestTrades ?? []).length === 0 ? (
+                    <div className="mt-2 text-xs text-[var(--muted)]">
+                      No trades in snapshot.
+                    </div>
+                  ) : (
+                    <div className="mt-3 max-h-[200px] overflow-auto">
+                      <table className="min-w-full text-xs">
+                        <thead className="text-left text-[var(--muted)]">
+                          <tr>
+                            <th className="py-1 pr-2">Symbol</th>
+                            <th className="py-1 pr-2">Price</th>
+                            <th className="py-1 pr-2">Size</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-[#132033]">
+                          {(snapshot.latestTrades ?? []).slice(0, 8).map((t, idx) => (
+                            <tr key={`${t.symbol ?? "sym"}-${idx}`}>
+                              <td className="py-1 pr-2 font-semibold">
+                                {t.symbol ?? "-"}
+                              </td>
+                              <td className="py-1 pr-2">{fmtNum(t.price)}</td>
+                              <td className="py-1 pr-2">{fmtNum(t.size)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-lg border border-[#132033] bg-[#0b1728] p-4">
+                  <div className="text-xs text-[var(--muted)]">Latest bars</div>
+                  {(snapshot.latestBars ?? []).length === 0 ? (
+                    <div className="mt-2 text-xs text-[var(--muted)]">
+                      No bars in snapshot.
+                    </div>
+                  ) : (
+                    <div className="mt-3 max-h-[200px] overflow-auto">
+                      <table className="min-w-full text-xs">
+                        <thead className="text-left text-[var(--muted)]">
+                          <tr>
+                            <th className="py-1 pr-2">Symbol</th>
+                            <th className="py-1 pr-2">Close</th>
+                            <th className="py-1 pr-2">Vol</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-[#132033]">
+                          {(snapshot.latestBars ?? []).slice(0, 8).map((b, idx) => (
+                            <tr key={`${b.symbol ?? "sym"}-${idx}`}>
+                              <td className="py-1 pr-2 font-semibold">
+                                {b.symbol ?? "-"}
+                              </td>
+                              <td className="py-1 pr-2">{fmtNum(b.close)}</td>
+                              <td className="py-1 pr-2">{fmtNum(b.volume)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="mt-3 text-sm text-[var(--muted)]">
+              No snapshot loaded.
+            </div>
           )}
         </div>
 
-        <div className="rounded-xl border bg-white p-6 shadow">
-          <div className="text-sm font-semibold">Polling</div>
-          <div className="mt-3 flex flex-wrap items-center gap-3">
+        <div className="rounded-2xl border border-[#132033] bg-[#0f1b2d] p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="text-sm font-semibold">Polling</div>
+              <div className="mt-1 text-xs text-[var(--muted)]">
+                Keep polling a watchlist of symbols.
+              </div>
+            </div>
+            <div
+              className={
+                polling
+                  ? "rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-200"
+                  : "rounded-full border border-[#1f2e44] bg-[#0b1728] px-3 py-1 text-xs text-[var(--muted)]"
+              }
+            >
+              {polling ? "Running" : "Stopped"}
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-3">
             <input
-              className="min-w-[260px] rounded-lg border px-3 py-2 text-sm"
+              className="min-w-[260px] rounded-lg border border-[#1f2e44] bg-[#0b1728] px-3 py-2 text-sm text-white"
               value={pollSymbols}
               onChange={(e) => setPollSymbols(e.target.value)}
               placeholder="AAPL,MSFT,NVDA"
             />
             <input
               type="number"
-              className="w-28 rounded-lg border px-3 py-2 text-sm"
+              className="w-28 rounded-lg border border-[#1f2e44] bg-[#0b1728] px-3 py-2 text-sm text-white"
               min={1}
               max={60}
               value={pollInterval}
@@ -455,84 +661,76 @@ export default function MarketDataPage() {
             />
             <button
               disabled={loading || !userId || normalizedPollSymbols.length === 0}
-              className="rounded-lg bg-black px-4 py-2 text-sm text-white disabled:opacity-60"
+              className="rounded-lg bg-[#1f6feb] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
               onClick={() => void onStartPolling()}
             >
               Start
             </button>
             <button
               disabled={loading || !userId || !polling}
-              className="rounded-lg border px-4 py-2 text-sm disabled:opacity-60"
+              className="rounded-lg border border-[#1f2e44] px-4 py-2 text-sm text-white disabled:opacity-60"
               onClick={() => void onStopPolling()}
             >
               Stop
             </button>
             <button
               disabled={loading || !userId || normalizedPollSymbols.length === 0}
-              className="rounded-lg border px-4 py-2 text-sm disabled:opacity-60"
+              className="rounded-lg border border-[#1f2e44] px-4 py-2 text-sm text-white disabled:opacity-60"
               onClick={() => void onAddSymbols()}
             >
               Add symbols
             </button>
             <button
               disabled={loading || !userId || normalizedPollSymbols.length === 0}
-              className="rounded-lg border px-4 py-2 text-sm disabled:opacity-60"
+              className="rounded-lg border border-[#1f2e44] px-4 py-2 text-sm text-white disabled:opacity-60"
               onClick={() => void onRemoveSymbols()}
             >
               Remove symbols
             </button>
             <button
               disabled={loading || !userId}
-              className="rounded-lg border px-4 py-2 text-sm disabled:opacity-60"
+              className="rounded-lg border border-[#1f2e44] px-4 py-2 text-sm text-white disabled:opacity-60"
               onClick={() => void onFetchPolled()}
             >
               Fetch polled quotes
             </button>
           </div>
 
-          <div className="mt-3 text-xs text-gray-600">
-            Status: {polling ? "Running" : "Stopped"}
-          </div>
-
           {polledQuotes.length > 0 ? (
-            <div className="mt-4 overflow-auto rounded-lg border">
-              <table className="min-w-full text-sm">
-                <thead className="bg-gray-50 text-left">
-                  <tr>
-                    <th className="px-4 py-3">Symbol</th>
-                    <th className="px-4 py-3">Bid</th>
-                    <th className="px-4 py-3">Ask</th>
-                    <th className="px-4 py-3">Time</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {polledQuotes.map((q, idx) => (
-                    <tr key={`${q.symbol ?? "sym"}-${idx}`}>
-                      <td className="px-4 py-3 font-medium">
-                        {q.symbol ?? "-"}
-                      </td>
-                      <td className="px-4 py-3">{fmtNum(q.bidPrice)}</td>
-                      <td className="px-4 py-3">{fmtNum(q.askPrice)}</td>
-                      <td className="px-4 py-3">
-                        {q.timestamp ? String(q.timestamp) : "-"}
-                      </td>
+            <>
+              <div className="mt-3 text-xs text-[var(--muted)]">
+                Last update: {fmtTime(polledQuotes[0]?.timestamp)}
+              </div>
+              <div className="mt-3 max-h-[300px] overflow-auto rounded-lg border border-[#132033]">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-[#0b1728] text-left text-xs text-[var(--muted)]">
+                    <tr>
+                      <th className="px-4 py-3">Symbol</th>
+                      <th className="px-4 py-3">Bid</th>
+                      <th className="px-4 py-3">Ask</th>
+                      <th className="px-4 py-3">Time</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-[#132033]">
+                    {polledQuotes.map((q, idx) => (
+                      <tr key={`${q.symbol ?? "sym"}-${idx}`}>
+                        <td className="px-4 py-3 font-medium">
+                          {q.symbol ?? "-"}
+                        </td>
+                        <td className="px-4 py-3">{fmtNum(q.bidPrice)}</td>
+                        <td className="px-4 py-3">{fmtNum(q.askPrice)}</td>
+                        <td className="px-4 py-3">{fmtTime(q.timestamp)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           ) : (
-            <div className="mt-3 text-sm text-gray-600">
+            <div className="mt-3 text-sm text-[var(--muted)]">
               No polled quotes loaded.
             </div>
           )}
-        </div>
-
-        <div className="rounded-xl border bg-white p-6 shadow">
-          <div className="text-sm font-semibold">Raw bars data</div>
-          <pre className="mt-3 overflow-auto rounded-lg bg-gray-50 p-3 text-xs">
-            {JSON.stringify(bars, null, 2)}
-          </pre>
         </div>
       </div>
     </div>
