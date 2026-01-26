@@ -3,7 +3,11 @@ import { useEffect, useMemo, useState } from "react";
 import { auth } from "../lib/firebase";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
-import { getAccountInfo, getPortfolioValue, getUnrealizedPnl } from "../api/account";
+import {
+  getAccountInfo,
+  getPortfolioValue,
+  getUnrealizedPnl,
+} from "../api/account";
 import { getPositions } from "../api/positions";
 import { getUserStrategies } from "../api/strategies";
 
@@ -60,7 +64,8 @@ export default function DashboardPage() {
 
   function extractErrorMessage(error: any) {
     if (!error) return "Request failed";
-    const raw = typeof error?.message === "string" ? error.message : String(error);
+    const raw =
+      typeof error?.message === "string" ? error.message : String(error);
     const trimmed = raw.trim();
     if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
       try {
@@ -101,7 +106,8 @@ export default function DashboardPage() {
           getAccountInfo(data.id),
         ]);
 
-        const [pvRes, pnlRes, positionsRes, strategiesRes, accountRes] = results;
+        const [pvRes, pnlRes, positionsRes, strategiesRes, accountRes] =
+          results;
 
         if (pvRes.status === "fulfilled") {
           setPortfolioValue(pvRes.value);
@@ -141,7 +147,10 @@ export default function DashboardPage() {
         if (accountRes.status === "fulfilled") {
           const account = accountRes.value;
           setTotalValue(account?.equity ?? null);
-          if (account?.equity !== undefined && account?.lastEquity !== undefined) {
+          if (
+            account?.equity !== undefined &&
+            account?.lastEquity !== undefined
+          ) {
             const current =
               typeof account.equity === "string"
                 ? Number(account.equity)
@@ -164,7 +173,6 @@ export default function DashboardPage() {
           setTotalValue(null);
           setTotalValueDelta(null);
         }
-
       } catch (e: any) {
         setMeError(extractErrorMessage(e));
         setPortfolioValue(null);

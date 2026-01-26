@@ -26,12 +26,12 @@ export default function AppLayout() {
             >
               Dashboard
             </button>
-            <button
+            {/* <button
               className={isActive("/market") ? "text-white" : undefined}
               onClick={() => nav("/market")}
             >
               Market Data
-            </button>
+            </button> */}
             <button
               className={isActive("/orders") ? "text-white" : undefined}
               onClick={() => nav("/orders")}
