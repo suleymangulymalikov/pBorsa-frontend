@@ -1,6 +1,6 @@
 import { onAuthStateChanged } from "firebase/auth";
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { auth } from "../lib/firebase";
 import { api } from "../api/client";
 
@@ -57,6 +57,7 @@ function pickOrderId(o: OrderDetail): string | null {
 
 export default function OrdersPage() {
   const nav = useNavigate();
+  const location = useLocation();
 
   const [me, setMe] = useState<MeResponse | null>(null);
   const userId = me?.id ?? null;
@@ -153,6 +154,12 @@ export default function OrdersPage() {
         );
 
         setStrategies(Array.isArray(userStrategies) ? userStrategies : []);
+
+        // Check if we have a strategyId from navigation state
+        const navState = location.state as { strategyId?: number } | null;
+        if (navState?.strategyId && typeof navState.strategyId === "number") {
+          setStrategyId(navState.strategyId);
+        }
       } catch (e: any) {
         const errorMessage =
           e?.message ||
@@ -162,7 +169,15 @@ export default function OrdersPage() {
     });
 
     return () => unsub();
-  }, [nav]);
+  }, [nav, location.state]);
+
+  // Auto-load orders when strategyId changes
+  useEffect(() => {
+    if (strategyId !== "") {
+      void loadOrders();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [strategyId]);
 
   const loadOrders = async () => {
     if (!userId || strategyId === "") return;
