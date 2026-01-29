@@ -92,7 +92,9 @@ export default function StrategiesPage() {
         setBaseCode(String(bases[0].code));
       }
     } catch (e: any) {
-      setError(e?.message ?? "Failed to load strategies");
+      const errorMessage =
+        e?.message || "Failed to load strategies. Please try again.";
+      setError(errorMessage);
     }
   }
 
@@ -111,7 +113,9 @@ export default function StrategiesPage() {
         setMessage(null);
         await loadAll(meData.id);
       } catch (e: any) {
-        setError(e?.message ?? "Failed to load /users/me");
+        const errorMessage =
+          e?.message || "Unable to load user information. Please try again.";
+        setError(errorMessage);
       } finally {
         setLoading(false);
       }
@@ -164,7 +168,9 @@ export default function StrategiesPage() {
       setName("");
       await loadAll(userId);
     } catch (e: any) {
-      setError(e?.message ?? "Failed to create strategy");
+      const errorMessage =
+        e?.message || "Failed to create strategy. Please try again.";
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -184,7 +190,9 @@ export default function StrategiesPage() {
       );
       await loadAll(userId);
     } catch (e: any) {
-      setError(e?.message ?? "Failed to activate strategy");
+      const errorMessage =
+        e?.message || "Failed to activate strategy. Please try again.";
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -202,7 +210,9 @@ export default function StrategiesPage() {
       setMessage("Strategy deleted.");
       await loadAll(userId);
     } catch (e: any) {
-      setError(e?.message ?? "Failed to delete strategy");
+      const errorMessage =
+        e?.message || "Failed to delete strategy. Please try again.";
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -220,7 +230,9 @@ export default function StrategiesPage() {
       setMessage("Strategy stopped.");
       await loadAll(userId);
     } catch (e: any) {
-      setError(e?.message ?? "Failed to stop strategy");
+      const errorMessage =
+        e?.message || "Failed to stop strategy. Please try again.";
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -260,7 +272,9 @@ export default function StrategiesPage() {
       setEditingId(null);
       await loadAll(userId);
     } catch (e: any) {
-      setError(e?.message ?? "Failed to update strategy");
+      const errorMessage =
+        e?.message || "Failed to update strategy. Please try again.";
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -454,103 +468,109 @@ export default function StrategiesPage() {
                       return rank(a) - rank(b);
                     })
                     .map((s: any) => {
-                    const status = String(s?.status ?? "-");
-                    const disableActivate =
-                      loading ||
-                      status === "ACTIVE" ||
-                      status === "PREPARING" ||
-                      status === "STOPPED";
-                    const canDelete = status === "CREATED" || status === "STOPPED";
-                    const canStop = status === "ACTIVE" || status === "PAUSED";
+                      const status = String(s?.status ?? "-");
+                      const disableActivate =
+                        loading ||
+                        status === "ACTIVE" ||
+                        status === "PREPARING" ||
+                        status === "STOPPED";
+                      const canDelete =
+                        status === "CREATED" || status === "STOPPED";
+                      const canStop =
+                        status === "ACTIVE" || status === "PAUSED";
 
-                    return (
-                      <tr key={s.id}>
-                        <td className="px-4 py-3 font-mono text-xs">{s.id}</td>
-                      <td className="px-4 py-3 font-medium">
-                        {editingId === s.id ? (
-                          <input
-                            className="w-full rounded-md border border-[#1f2e44] bg-[#0b1728] px-2 py-1 text-xs text-white"
-                            value={editName}
-                            onChange={(e) => setEditName(e.target.value)}
-                          />
-                        ) : (
-                          s.name ?? "-"
-                        )}
-                      </td>
-                        <td className="px-4 py-3">{getBaseCode(s)}</td>
-                        <td className="px-4 py-3">{s.symbol ?? "-"}</td>
-                        <td className="px-4 py-3">{String(s.budget ?? "-")}</td>
-                      <td className="px-4 py-3">
-                        <Badge text={status} />
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-2">
-                          {editingId === s.id ? (
-                            <>
-                              <button
-                                className="rounded-lg bg-[#1f6feb] px-3 py-1.5 text-xs text-white disabled:opacity-60"
-                                disabled={loading}
-                                onClick={() => void onSaveEdit(s.id)}
-                                type="button"
-                              >
-                                Save
-                              </button>
-                              <button
-                                className="rounded-lg border border-[#1f2e44] px-3 py-1.5 text-xs text-white disabled:opacity-60"
-                                disabled={loading}
-                                onClick={onCancelEdit}
-                                type="button"
-                              >
-                                Cancel
-                              </button>
-                            </>
-                          ) : (
-                            <>
-                              <button
-                                className="rounded-lg bg-[#1f6feb] px-3 py-1.5 text-xs text-white disabled:opacity-60"
-                                disabled={disableActivate}
-                                onClick={() => void onActivate(s.id)}
-                                type="button"
-                              >
-                                Activate
-                              </button>
-                              <button
-                                className="rounded-lg border border-[#1f2e44] px-3 py-1.5 text-xs text-white disabled:opacity-60"
-                                disabled={loading}
-                                onClick={() => void onStartEdit(s)}
-                                type="button"
-                              >
-                                Edit
-                              </button>
-                              <button
-                                className="rounded-lg border border-[#1f2e44] px-3 py-1.5 text-xs text-white disabled:opacity-60"
-                                disabled={loading || !canStop}
-                                onClick={() => void onStop(s.id)}
-                                type="button"
-                                title={
-                                  canStop
-                                    ? "Stop strategy"
-                                    : "Only ACTIVE or PAUSED can be stopped"
-                                }
-                              >
-                                Stop
-                              </button>
-                              <button
-                                className="rounded-lg border border-[#1f2e44] px-3 py-1.5 text-xs text-white disabled:opacity-60"
-                                disabled={loading || !canDelete}
-                                onClick={() => void onDelete(s.id)}
-                                type="button"
-                                title="Delete strategy"
-                              >
-                                Delete
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </td>
-                      </tr>
-                    );
-                  })}
+                      return (
+                        <tr key={s.id}>
+                          <td className="px-4 py-3 font-mono text-xs">
+                            {s.id}
+                          </td>
+                          <td className="px-4 py-3 font-medium">
+                            {editingId === s.id ? (
+                              <input
+                                className="w-full rounded-md border border-[#1f2e44] bg-[#0b1728] px-2 py-1 text-xs text-white"
+                                value={editName}
+                                onChange={(e) => setEditName(e.target.value)}
+                              />
+                            ) : (
+                              (s.name ?? "-")
+                            )}
+                          </td>
+                          <td className="px-4 py-3">{getBaseCode(s)}</td>
+                          <td className="px-4 py-3">{s.symbol ?? "-"}</td>
+                          <td className="px-4 py-3">
+                            {String(s.budget ?? "-")}
+                          </td>
+                          <td className="px-4 py-3">
+                            <Badge text={status} />
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex flex-wrap gap-2">
+                              {editingId === s.id ? (
+                                <>
+                                  <button
+                                    className="rounded-lg bg-[#1f6feb] px-3 py-1.5 text-xs text-white disabled:opacity-60"
+                                    disabled={loading}
+                                    onClick={() => void onSaveEdit(s.id)}
+                                    type="button"
+                                  >
+                                    Save
+                                  </button>
+                                  <button
+                                    className="rounded-lg border border-[#1f2e44] px-3 py-1.5 text-xs text-white disabled:opacity-60"
+                                    disabled={loading}
+                                    onClick={onCancelEdit}
+                                    type="button"
+                                  >
+                                    Cancel
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    className="rounded-lg bg-[#1f6feb] px-3 py-1.5 text-xs text-white disabled:opacity-60"
+                                    disabled={disableActivate}
+                                    onClick={() => void onActivate(s.id)}
+                                    type="button"
+                                  >
+                                    Activate
+                                  </button>
+                                  <button
+                                    className="rounded-lg border border-[#1f2e44] px-3 py-1.5 text-xs text-white disabled:opacity-60"
+                                    disabled={loading}
+                                    onClick={() => void onStartEdit(s)}
+                                    type="button"
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    className="rounded-lg border border-[#1f2e44] px-3 py-1.5 text-xs text-white disabled:opacity-60"
+                                    disabled={loading || !canStop}
+                                    onClick={() => void onStop(s.id)}
+                                    type="button"
+                                    title={
+                                      canStop
+                                        ? "Stop strategy"
+                                        : "Only ACTIVE or PAUSED can be stopped"
+                                    }
+                                  >
+                                    Stop
+                                  </button>
+                                  <button
+                                    className="rounded-lg border border-[#1f2e44] px-3 py-1.5 text-xs text-white disabled:opacity-60"
+                                    disabled={loading || !canDelete}
+                                    onClick={() => void onDelete(s.id)}
+                                    type="button"
+                                    title="Delete strategy"
+                                  >
+                                    Delete
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                 </tbody>
               </table>
             </div>

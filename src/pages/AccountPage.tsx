@@ -84,7 +84,8 @@ export default function AccountPage() {
 
   function extractErrorMessage(error: any) {
     if (!error) return "Request failed";
-    const raw = typeof error?.message === "string" ? error.message : String(error);
+    const raw =
+      typeof error?.message === "string" ? error.message : String(error);
     const trimmed = raw.trim();
     if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
       try {
@@ -176,7 +177,9 @@ export default function AccountPage() {
         setMe(data);
         await loadAll(data.id);
       } catch (e: any) {
-        setError(e?.message ?? "Failed to load /users/me");
+        const errorMessage =
+          e?.message || "Unable to load user information. Please try again.";
+        setError(errorMessage);
       }
     });
 
@@ -231,7 +234,10 @@ export default function AccountPage() {
       const status = await getCredentialsStatus(userId);
       setHasCreds(status);
     } catch (e: any) {
-      setError(e?.message ?? "Failed to save credentials");
+      const errorMessage =
+        e?.message ||
+        "Failed to save credentials. Please check your API keys and try again.";
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -249,7 +255,9 @@ export default function AccountPage() {
       setHasCreds(false);
       setMessage("Credentials deactivated.");
     } catch (e: any) {
-      setError(e?.message ?? "Failed to deactivate credentials");
+      const errorMessage =
+        e?.message || "Failed to deactivate credentials. Please try again.";
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -292,7 +300,25 @@ export default function AccountPage() {
       setNewPassword("");
       setConfirmNewPassword("");
     } catch (e: any) {
-      setPasswordError(e?.message ?? "Failed to update password.");
+      const errorCode = e?.code;
+      let errorMessage = "Failed to update password. Please try again.";
+
+      if (
+        errorCode === "auth/wrong-password" ||
+        errorCode === "auth/invalid-credential"
+      ) {
+        errorMessage = "Current password is incorrect. Please try again.";
+      } else if (errorCode === "auth/weak-password") {
+        errorMessage =
+          "New password is too weak. Please use a stronger password.";
+      } else if (errorCode === "auth/requires-recent-login") {
+        errorMessage =
+          "Please log out and log in again before changing your password.";
+      } else if (e?.message) {
+        errorMessage = e.message;
+      }
+
+      setPasswordError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -315,16 +341,28 @@ export default function AccountPage() {
 
     setLoading(true);
     try {
-      const credential = EmailAuthProvider.credential(
-        me.email,
-        deletePassword,
-      );
+      const credential = EmailAuthProvider.credential(me.email, deletePassword);
       await reauthenticateWithCredential(user, credential);
       await deleteUser(user);
       setDeleteMessage("Account deleted.");
       nav("/login");
     } catch (e: any) {
-      setDeleteError(e?.message ?? "Failed to delete account.");
+      const errorCode = e?.code;
+      let errorMessage = "Failed to delete account. Please try again.";
+
+      if (
+        errorCode === "auth/wrong-password" ||
+        errorCode === "auth/invalid-credential"
+      ) {
+        errorMessage = "Incorrect password. Please try again.";
+      } else if (errorCode === "auth/requires-recent-login") {
+        errorMessage =
+          "Please log out and log in again before deleting your account.";
+      } else if (e?.message) {
+        errorMessage = e.message;
+      }
+
+      setDeleteError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -415,9 +453,7 @@ export default function AccountPage() {
                       ? "bg-[#132033] text-white"
                       : "hover:bg-[#132033]/60"
                   }`}
-                  onClick={() =>
-                    setSection(item.id as typeof section)
-                  }
+                  onClick={() => setSection(item.id as typeof section)}
                 >
                   {item.label}
                 </button>
@@ -484,7 +520,9 @@ export default function AccountPage() {
                   </div>
 
                   <div className="rounded-xl border border-[#1a2b45] bg-[#0b1728] p-4">
-                    <div className="text-xs text-[var(--muted)]">Total Value</div>
+                    <div className="text-xs text-[var(--muted)]">
+                      Total Value
+                    </div>
                     <div className="mt-2 text-2xl font-semibold">
                       {fmtMoney(portfolioValue)} {account?.currency ?? ""}
                     </div>

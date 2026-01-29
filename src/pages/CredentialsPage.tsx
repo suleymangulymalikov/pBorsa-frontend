@@ -41,7 +41,9 @@ export default function CredentialsPage() {
       setHasCreds(status);
     } catch (e: any) {
       setHasCreds(null);
-      setError(e?.message ?? "Failed to load credentials status");
+      const errorMessage =
+        e?.message || "Unable to load credentials status. Please try again.";
+      setError(errorMessage);
     }
   }
 
@@ -60,7 +62,9 @@ export default function CredentialsPage() {
         setMe(data);
         await loadMeAndStatus(data.id);
       } catch (e: any) {
-        setError(e?.message ?? "Failed to load /users/me");
+        const errorMessage =
+          e?.message || "Unable to load user information. Please try again.";
+        setError(errorMessage);
       }
     });
 
@@ -82,7 +86,10 @@ export default function CredentialsPage() {
       setSecretKey("");
       await loadMeAndStatus(userId);
     } catch (e: any) {
-      setError(e?.message ?? "Failed to register credentials");
+      const errorMessage =
+        e?.message ||
+        "Failed to register credentials. Please check your API keys and try again.";
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -100,7 +107,9 @@ export default function CredentialsPage() {
       setMessage("Credentials deactivated.");
       await loadMeAndStatus(userId);
     } catch (e: any) {
-      setError(e?.message ?? "Failed to deactivate credentials");
+      const errorMessage =
+        e?.message || "Failed to deactivate credentials. Please try again.";
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }

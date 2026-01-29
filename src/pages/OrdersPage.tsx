@@ -154,7 +154,10 @@ export default function OrdersPage() {
 
         setStrategies(Array.isArray(userStrategies) ? userStrategies : []);
       } catch (e: any) {
-        setError(e?.message ?? "Failed to load user / strategies");
+        const errorMessage =
+          e?.message ||
+          "Unable to load user information and strategies. Please try again.";
+        setError(errorMessage);
       }
     });
 
@@ -177,7 +180,9 @@ export default function OrdersPage() {
       setSelectedOrderDetail(null);
       setSelectedOrderHistory([]);
     } catch (e: any) {
-      setError(e?.message ?? "Failed to load orders");
+      const errorMessage =
+        e?.message || "Failed to load orders. Please try again.";
+      setError(errorMessage);
       setOrders([]);
     } finally {
       setLoading(false);
@@ -207,7 +212,9 @@ export default function OrdersPage() {
       setSelectedOrderDetail(detail);
       setSelectedOrderHistory(Array.isArray(history) ? history : []);
     } catch (e: any) {
-      setError(e?.message ?? "Failed to load order detail/history");
+      const errorMessage =
+        e?.message || "Failed to load order details. Please try again.";
+      setError(errorMessage);
       setSelectedOrderDetail(null);
       setSelectedOrderHistory([]);
     } finally {
@@ -379,7 +386,9 @@ export default function OrdersPage() {
             <div className="text-sm font-semibold">Selected Order Detail</div>
 
             {detailLoading ? (
-              <div className="mt-3 text-sm text-[var(--muted)]">Loading detail.</div>
+              <div className="mt-3 text-sm text-[var(--muted)]">
+                Loading detail.
+              </div>
             ) : !selectedOrderDetail ? (
               <div className="mt-3 text-sm text-[var(--muted)]">
                 Click an order from the list to view its details.
@@ -395,45 +404,66 @@ export default function OrdersPage() {
                 <div className="grid gap-3 md:grid-cols-2">
                   <div className="rounded-lg border border-[#132033] bg-[#0b1728] p-4">
                     <div className="text-xs text-[var(--muted)]">Symbol</div>
-                    <div className="mt-1">{selectedOrderDetail.symbol ?? "-"}</div>
+                    <div className="mt-1">
+                      {selectedOrderDetail.symbol ?? "-"}
+                    </div>
                   </div>
                   <div className="rounded-lg border border-[#132033] bg-[#0b1728] p-4">
                     <div className="text-xs text-[var(--muted)]">Side</div>
-                    <div className="mt-1">{selectedOrderDetail.side ?? "-"}</div>
+                    <div className="mt-1">
+                      {selectedOrderDetail.side ?? "-"}
+                    </div>
                   </div>
                   <div className="rounded-lg border border-[#132033] bg-[#0b1728] p-4">
                     <div className="text-xs text-[var(--muted)]">Quantity</div>
                     <div className="mt-1">
-                      {fmtNum(selectedOrderDetail.quantity ?? selectedOrderDetail.qty)}
+                      {fmtNum(
+                        selectedOrderDetail.quantity ?? selectedOrderDetail.qty,
+                      )}
                     </div>
                   </div>
                   <div className="rounded-lg border border-[#132033] bg-[#0b1728] p-4">
                     <div className="text-xs text-[var(--muted)]">Type</div>
                     <div className="mt-1">
-                      {fmtStatus(selectedOrderDetail.type ?? selectedOrderDetail.orderType)}
+                      {fmtStatus(
+                        selectedOrderDetail.type ??
+                          selectedOrderDetail.orderType,
+                      )}
                     </div>
                   </div>
                   <div className="rounded-lg border border-[#132033] bg-[#0b1728] p-4">
                     <div className="text-xs text-[var(--muted)]">Status</div>
-                    <div className="mt-1">{fmtStatus(selectedOrderDetail.status)}</div>
+                    <div className="mt-1">
+                      {fmtStatus(selectedOrderDetail.status)}
+                    </div>
                   </div>
                   <div className="rounded-lg border border-[#132033] bg-[#0b1728] p-4">
-                    <div className="text-xs text-[var(--muted)]">Time in Force</div>
-                    <div className="mt-1">{selectedOrderDetail.timeInForce ?? "-"}</div>
+                    <div className="text-xs text-[var(--muted)]">
+                      Time in Force
+                    </div>
+                    <div className="mt-1">
+                      {selectedOrderDetail.timeInForce ?? "-"}
+                    </div>
                   </div>
                 </div>
                 <div className="grid gap-3 md:grid-cols-3">
                   <div className="rounded-lg border border-[#132033] bg-[#0b1728] p-4">
                     <div className="text-xs text-[var(--muted)]">Created</div>
-                    <div className="mt-1">{fmtTime(selectedOrderDetail.createdAt)}</div>
+                    <div className="mt-1">
+                      {fmtTime(selectedOrderDetail.createdAt)}
+                    </div>
                   </div>
                   <div className="rounded-lg border border-[#132033] bg-[#0b1728] p-4">
                     <div className="text-xs text-[var(--muted)]">Submitted</div>
-                    <div className="mt-1">{fmtTime(selectedOrderDetail.submittedAt)}</div>
+                    <div className="mt-1">
+                      {fmtTime(selectedOrderDetail.submittedAt)}
+                    </div>
                   </div>
                   <div className="rounded-lg border border-[#132033] bg-[#0b1728] p-4">
                     <div className="text-xs text-[var(--muted)]">Updated</div>
-                    <div className="mt-1">{fmtTime(selectedOrderDetail.updatedAt)}</div>
+                    <div className="mt-1">
+                      {fmtTime(selectedOrderDetail.updatedAt)}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -444,7 +474,9 @@ export default function OrdersPage() {
             <div className="text-sm font-semibold">Order History</div>
 
             {detailLoading ? (
-              <div className="mt-3 text-sm text-[var(--muted)]">Loading history.</div>
+              <div className="mt-3 text-sm text-[var(--muted)]">
+                Loading history.
+              </div>
             ) : selectedOrderId && selectedOrderHistory.length === 0 ? (
               <div className="mt-3 text-sm text-[var(--muted)]">
                 No history entries found.
