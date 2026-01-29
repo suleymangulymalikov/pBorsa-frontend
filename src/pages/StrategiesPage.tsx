@@ -1,6 +1,6 @@
 import { onAuthStateChanged } from "firebase/auth";
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { auth } from "../lib/firebase";
 import { api } from "../api/client";
 
@@ -66,7 +66,7 @@ export default function StrategiesPage() {
   const [baseCode, setBaseCode] = useState("");
   const [name, setName] = useState("");
   const [symbol, setSymbol] = useState("AAPL");
-  const [budget, setBudget] = useState<number>(1000);
+  const [budget, setBudget] = useState<string>("1000");
 
   const normalizedSymbol = useMemo(() => symbol.trim().toUpperCase(), [symbol]);
 
@@ -400,7 +400,7 @@ export default function StrategiesPage() {
               value={budget}
               min={0.01}
               step={0.01}
-              onChange={(e) => setBudget(Number(e.target.value))}
+              onChange={(e) => setBudget(e.target.value)}
               required
             />
             <div className="mt-1 text-xs text-[var(--muted)]">
@@ -534,6 +534,14 @@ export default function StrategiesPage() {
                                   >
                                     Activate
                                   </button>
+                                  <Link
+                                    to="/orders"
+                                    state={{ strategyId: s.id }}
+                                    className="rounded-lg border border-[#1f2e44] px-3 py-1.5 text-xs text-white hover:bg-[#1f2e44]/50 disabled:opacity-60 inline-block"
+                                    title="View orders for this strategy"
+                                  >
+                                    Orders
+                                  </Link>
                                   <button
                                     className="rounded-lg border border-[#1f2e44] px-3 py-1.5 text-xs text-white disabled:opacity-60"
                                     disabled={loading}
