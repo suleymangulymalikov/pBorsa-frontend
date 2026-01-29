@@ -115,7 +115,9 @@ export default function MarketDataPage() {
         const data = await api.get<MeResponse>("/api/v1/users/me");
         setMe(data);
       } catch (e: any) {
-        setError(e?.message ?? "Failed to load /users/me");
+        const errorMessage =
+          e?.message || "Unable to load user information. Please try again.";
+        setError(errorMessage);
       }
     });
 
@@ -145,7 +147,9 @@ export default function MarketDataPage() {
       setBars(Array.isArray(b) ? b : []);
       setMessage(`Loaded market data for ${sym}.`);
     } catch (e: any) {
-      setError(e?.message ?? "Failed to load market data");
+      const errorMessage =
+        e?.message || "Failed to load market data. Please try again.";
+      setError(errorMessage);
       setQuote(null);
       setBars([]);
     } finally {
@@ -166,7 +170,9 @@ export default function MarketDataPage() {
       setSnapshot(data);
       setMessage("Snapshot loaded.");
     } catch (e: any) {
-      setError(e?.message ?? "Failed to load snapshot");
+      const errorMessage =
+        e?.message || "Failed to load snapshot. Please try again.";
+      setError(errorMessage);
       setSnapshot(null);
     } finally {
       setLoading(false);
@@ -186,7 +192,9 @@ export default function MarketDataPage() {
       setPolling(true);
       setMessage("Polling started.");
     } catch (e: any) {
-      setError(e?.message ?? "Failed to start polling");
+      const errorMessage =
+        e?.message || "Failed to start polling. Please try again.";
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -204,7 +212,9 @@ export default function MarketDataPage() {
       setPolling(false);
       setMessage("Polling stopped.");
     } catch (e: any) {
-      setError(e?.message ?? "Failed to stop polling");
+      const errorMessage =
+        e?.message || "Failed to stop polling. Please try again.";
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -222,7 +232,9 @@ export default function MarketDataPage() {
       await addPollingSymbols(userId, normalizedPollSymbols);
       setMessage("Symbols added to polling.");
     } catch (e: any) {
-      setError(e?.message ?? "Failed to add symbols");
+      const errorMessage =
+        e?.message || "Failed to add symbols. Please try again.";
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -240,7 +252,9 @@ export default function MarketDataPage() {
       await removePollingSymbols(userId, normalizedPollSymbols);
       setMessage("Symbols removed from polling.");
     } catch (e: any) {
-      setError(e?.message ?? "Failed to remove symbols");
+      const errorMessage =
+        e?.message || "Failed to remove symbols. Please try again.";
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -258,7 +272,9 @@ export default function MarketDataPage() {
       setPolledQuotes(Array.isArray(data) ? data : []);
       setMessage("Polled quotes loaded.");
     } catch (e: any) {
-      setError(e?.message ?? "Failed to load polled quotes");
+      const errorMessage =
+        e?.message || "Failed to load polled quotes. Please try again.";
+      setError(errorMessage);
       setPolledQuotes([]);
     } finally {
       setLoading(false);
@@ -276,10 +292,7 @@ export default function MarketDataPage() {
         .filter((v): v is number => v !== null),
     [bars],
   );
-  const sparkPath = useMemo(
-    () => buildSparkPath(sparkValues),
-    [sparkValues],
-  );
+  const sparkPath = useMemo(() => buildSparkPath(sparkValues), [sparkValues]);
 
   return (
     <div className="min-h-screen bg-[var(--page-bg)] text-white">
@@ -452,9 +465,7 @@ export default function MarketDataPage() {
                     <tbody className="divide-y divide-[#132033]">
                       {bars.map((b, idx) => (
                         <tr key={idx}>
-                          <td className="px-4 py-3">
-                            {fmtTime(b.timestamp)}
-                          </td>
+                          <td className="px-4 py-3">{fmtTime(b.timestamp)}</td>
                           <td className="px-4 py-3">{fmtNum(b.open)}</td>
                           <td className="px-4 py-3">{fmtNum(b.high)}</td>
                           <td className="px-4 py-3">{fmtNum(b.low)}</td>
@@ -507,7 +518,9 @@ export default function MarketDataPage() {
                   </div>
                 </div>
                 <div className="rounded-xl border border-[#132033] bg-[#0b1728] p-4">
-                  <div className="text-xs text-[var(--muted)]">Latest trades</div>
+                  <div className="text-xs text-[var(--muted)]">
+                    Latest trades
+                  </div>
                   <div className="mt-2 text-2xl font-semibold">
                     {(snapshot.latestTrades ?? []).length}
                   </div>
@@ -543,8 +556,12 @@ export default function MarketDataPage() {
                               <td className="py-1 pr-2 font-semibold">
                                 {q.symbol ?? "-"}
                               </td>
-                              <td className="py-1 pr-2">{fmtNum(q.bidPrice)}</td>
-                              <td className="py-1 pr-2">{fmtNum(q.askPrice)}</td>
+                              <td className="py-1 pr-2">
+                                {fmtNum(q.bidPrice)}
+                              </td>
+                              <td className="py-1 pr-2">
+                                {fmtNum(q.askPrice)}
+                              </td>
                             </tr>
                           ))}
                         </tbody>
@@ -554,7 +571,9 @@ export default function MarketDataPage() {
                 </div>
 
                 <div className="rounded-lg border border-[#132033] bg-[#0b1728] p-4">
-                  <div className="text-xs text-[var(--muted)]">Latest trades</div>
+                  <div className="text-xs text-[var(--muted)]">
+                    Latest trades
+                  </div>
                   {(snapshot.latestTrades ?? []).length === 0 ? (
                     <div className="mt-2 text-xs text-[var(--muted)]">
                       No trades in snapshot.
@@ -570,15 +589,17 @@ export default function MarketDataPage() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-[#132033]">
-                          {(snapshot.latestTrades ?? []).slice(0, 8).map((t, idx) => (
-                            <tr key={`${t.symbol ?? "sym"}-${idx}`}>
-                              <td className="py-1 pr-2 font-semibold">
-                                {t.symbol ?? "-"}
-                              </td>
-                              <td className="py-1 pr-2">{fmtNum(t.price)}</td>
-                              <td className="py-1 pr-2">{fmtNum(t.size)}</td>
-                            </tr>
-                          ))}
+                          {(snapshot.latestTrades ?? [])
+                            .slice(0, 8)
+                            .map((t, idx) => (
+                              <tr key={`${t.symbol ?? "sym"}-${idx}`}>
+                                <td className="py-1 pr-2 font-semibold">
+                                  {t.symbol ?? "-"}
+                                </td>
+                                <td className="py-1 pr-2">{fmtNum(t.price)}</td>
+                                <td className="py-1 pr-2">{fmtNum(t.size)}</td>
+                              </tr>
+                            ))}
                         </tbody>
                       </table>
                     </div>
@@ -602,15 +623,19 @@ export default function MarketDataPage() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-[#132033]">
-                          {(snapshot.latestBars ?? []).slice(0, 8).map((b, idx) => (
-                            <tr key={`${b.symbol ?? "sym"}-${idx}`}>
-                              <td className="py-1 pr-2 font-semibold">
-                                {b.symbol ?? "-"}
-                              </td>
-                              <td className="py-1 pr-2">{fmtNum(b.close)}</td>
-                              <td className="py-1 pr-2">{fmtNum(b.volume)}</td>
-                            </tr>
-                          ))}
+                          {(snapshot.latestBars ?? [])
+                            .slice(0, 8)
+                            .map((b, idx) => (
+                              <tr key={`${b.symbol ?? "sym"}-${idx}`}>
+                                <td className="py-1 pr-2 font-semibold">
+                                  {b.symbol ?? "-"}
+                                </td>
+                                <td className="py-1 pr-2">{fmtNum(b.close)}</td>
+                                <td className="py-1 pr-2">
+                                  {fmtNum(b.volume)}
+                                </td>
+                              </tr>
+                            ))}
                         </tbody>
                       </table>
                     </div>
@@ -660,7 +685,9 @@ export default function MarketDataPage() {
               onChange={(e) => setPollInterval(Number(e.target.value))}
             />
             <button
-              disabled={loading || !userId || normalizedPollSymbols.length === 0}
+              disabled={
+                loading || !userId || normalizedPollSymbols.length === 0
+              }
               className="rounded-lg bg-[#1f6feb] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
               onClick={() => void onStartPolling()}
             >
@@ -674,14 +701,18 @@ export default function MarketDataPage() {
               Stop
             </button>
             <button
-              disabled={loading || !userId || normalizedPollSymbols.length === 0}
+              disabled={
+                loading || !userId || normalizedPollSymbols.length === 0
+              }
               className="rounded-lg border border-[#1f2e44] px-4 py-2 text-sm text-white disabled:opacity-60"
               onClick={() => void onAddSymbols()}
             >
               Add symbols
             </button>
             <button
-              disabled={loading || !userId || normalizedPollSymbols.length === 0}
+              disabled={
+                loading || !userId || normalizedPollSymbols.length === 0
+              }
               className="rounded-lg border border-[#1f2e44] px-4 py-2 text-sm text-white disabled:opacity-60"
               onClick={() => void onRemoveSymbols()}
             >

@@ -66,7 +66,26 @@ export default function RegisterPage() {
 
       nav("/");
     } catch (err: any) {
-      setError(err?.message ?? "Registration failed");
+      const errorCode = err?.code;
+      let errorMessage =
+        "An error occurred during registration. Please try again.";
+
+      if (errorCode === "auth/email-already-in-use") {
+        errorMessage =
+          "This email is already registered. Please use a different email or log in.";
+      } else if (errorCode === "auth/invalid-email") {
+        errorMessage = "Please enter a valid email address.";
+      } else if (errorCode === "auth/weak-password") {
+        errorMessage = "Password is too weak. Please use a stronger password.";
+      } else if (errorCode === "auth/operation-not-allowed") {
+        errorMessage =
+          "Registration is currently disabled. Please contact support.";
+      } else if (errorCode === "auth/network-request-failed") {
+        errorMessage =
+          "Network error. Please check your connection and try again.";
+      }
+
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }

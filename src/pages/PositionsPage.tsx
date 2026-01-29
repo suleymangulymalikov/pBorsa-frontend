@@ -79,7 +79,9 @@ export default function PositionsPage() {
       const data = await getPositions(uid);
       setPositions(Array.isArray(data) ? data : []);
     } catch (e: any) {
-      setError(e?.message ?? "Failed to load positions");
+      const errorMessage =
+        e?.message || "Failed to load positions. Please try again.";
+      setError(errorMessage);
       setPositions([]);
     } finally {
       setLoading(false);
@@ -100,7 +102,9 @@ export default function PositionsPage() {
         setMe(data);
         await load(data.id);
       } catch (e: any) {
-        setError(e?.message ?? "Failed to load /users/me");
+        const errorMessage =
+          e?.message || "Unable to load user information. Please try again.";
+        setError(errorMessage);
       }
     });
 
@@ -119,7 +123,9 @@ export default function PositionsPage() {
       await load(userId);
       setMessage("Positions refreshed from Alpaca.");
     } catch (e: any) {
-      setError(e?.message ?? "Failed to refresh positions");
+      const errorMessage =
+        e?.message || "Failed to refresh positions. Please try again.";
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -133,7 +139,8 @@ export default function PositionsPage() {
             <div>
               <h1 className="text-2xl font-semibold">Positions</h1>
               <p className="mt-2 text-sm text-[var(--muted)]">
-                Open positions for <span className="text-white">{me?.email ?? "..."}</span>
+                Open positions for{" "}
+                <span className="text-white">{me?.email ?? "..."}</span>
               </p>
             </div>
             <button
@@ -165,7 +172,9 @@ export default function PositionsPage() {
             </div>
           </div>
           <div className="rounded-xl border border-[#132033] bg-[#0f1b2d] p-4">
-            <div className="text-xs text-[var(--muted)]">Total Market Value</div>
+            <div className="text-xs text-[var(--muted)]">
+              Total Market Value
+            </div>
             <div
               className={`mt-2 text-2xl font-semibold ${
                 totalUnrealized < 0 ? "text-red-300" : "text-emerald-300"
@@ -212,7 +221,8 @@ export default function PositionsPage() {
                 </thead>
                 <tbody className="divide-y divide-[#132033]">
                   {positions.map((p) => {
-                    const unrealized = p.unrealizedPnL ?? p.unrealizedPl ?? undefined;
+                    const unrealized =
+                      p.unrealizedPnL ?? p.unrealizedPl ?? undefined;
                     const unrealizedPct =
                       p.unrealizedPnLPercent ?? p.unrealizedPlpc ?? undefined;
                     const qty = p.quantity ?? p.qty ?? undefined;
@@ -239,7 +249,9 @@ export default function PositionsPage() {
                         <td className="px-4 py-3">{p.side ?? "-"}</td>
                         <td className="px-4 py-3">{fmtNum(qty)}</td>
                         <td className="px-4 py-3">{fmtMoney(avgEntry)}</td>
-                        <td className="px-4 py-3">{fmtMoney(p.currentPrice)}</td>
+                        <td className="px-4 py-3">
+                          {fmtMoney(p.currentPrice)}
+                        </td>
                         <td className="px-4 py-3">{fmtMoney(p.marketValue)}</td>
                         <td className={`px-4 py-3 ${plClass}`}>
                           {fmtMoney(unrealized)}
@@ -255,7 +267,6 @@ export default function PositionsPage() {
             </div>
           )}
         </div>
-
       </div>
     </div>
   );

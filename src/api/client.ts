@@ -22,6 +22,32 @@ async function getAuthHeader() {
   };
 }
 
+function extractErrorMessage(errorText: string): string {
+  if (!errorText) return "Request failed";
+
+  const trimmed = errorText.trim();
+
+  // Try to parse as JSON
+  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+    try {
+      const parsed = JSON.parse(trimmed);
+
+      // Check for common error message fields
+      if (typeof parsed.error === "string") return parsed.error;
+      if (typeof parsed.message === "string") return parsed.message;
+      if (typeof parsed.detail === "string") return parsed.detail;
+
+      // If it's a structured error, return a generic message
+      return "An error occurred. Please try again.";
+    } catch {
+      // If JSON parsing fails, return the trimmed text
+      return trimmed;
+    }
+  }
+
+  return trimmed;
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = {
     "Content-Type": "application/json",
@@ -36,7 +62,8 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text || "Request failed");
+    const errorMessage = extractErrorMessage(text);
+    throw new Error(errorMessage);
   }
 
   const json: ApiResponse<T> = await res.json();
