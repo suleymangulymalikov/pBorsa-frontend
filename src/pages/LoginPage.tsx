@@ -19,7 +19,31 @@ export default function LoginPage() {
       await signInWithEmailAndPassword(auth, email, password);
       nav("/");
     } catch (err: any) {
-      setError(err?.message ?? "Login failed");
+      const errorCode = err?.code;
+      let errorMessage = "An error occurred during login. Please try again.";
+
+      if (
+        errorCode === "auth/invalid-credential" ||
+        errorCode === "auth/wrong-password"
+      ) {
+        errorMessage =
+          "Invalid email or password. Please check your credentials and try again.";
+      } else if (errorCode === "auth/user-not-found") {
+        errorMessage = "No account found with this email address.";
+      } else if (errorCode === "auth/invalid-email") {
+        errorMessage = "Please enter a valid email address.";
+      } else if (errorCode === "auth/user-disabled") {
+        errorMessage =
+          "This account has been disabled. Please contact support.";
+      } else if (errorCode === "auth/too-many-requests") {
+        errorMessage =
+          "Too many failed login attempts. Please try again later.";
+      } else if (errorCode === "auth/network-request-failed") {
+        errorMessage =
+          "Network error. Please check your connection and try again.";
+      }
+
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -38,10 +62,13 @@ export default function LoginPage() {
           <div className="absolute -left-24 -top-24 h-72 w-72 rounded-full bg-white/10 blur-3xl" />
           <div className="absolute -bottom-24 right-10 h-72 w-72 rounded-full bg-emerald-300/20 blur-3xl" />
           <div className="relative z-10">
-            <div className="flex items-center gap-2 text-lg font-semibold">
+            <Link
+              to="/"
+              className="flex items-center gap-2 text-lg font-semibold hover:opacity-80 transition-opacity"
+            >
               <span className="text-[var(--accent)]">↗</span>
               pBorsa
-            </div>
+            </Link>
             <h1 className="mt-16 text-4xl font-semibold leading-tight">
               Harness the Power of
               <br />
@@ -60,7 +87,12 @@ export default function LoginPage() {
         <section className="flex items-center justify-center px-6 py-12 lg:px-12">
           <div className="w-full max-w-md">
             <div className="mb-6 lg:hidden">
-              <div className="text-lg font-semibold text-white">pBorsa</div>
+              <Link
+                to="/"
+                className="text-lg font-semibold text-white hover:opacity-80 transition-opacity inline-block"
+              >
+                pBorsa
+              </Link>
               <p className="mt-2 text-sm text-[var(--muted)]">
                 Log in to access your trading workspace.
               </p>
