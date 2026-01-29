@@ -77,10 +77,13 @@ export default function RegisterPage() {
       <div className="min-h-screen px-6 py-12 lg:px-12">
         <div className="mx-auto flex max-w-5xl flex-col items-center gap-6">
           <div className="text-center">
-            <div className="inline-flex items-center gap-2 text-lg font-semibold">
+            <Link
+              to="/"
+              className="inline-flex items-center gap-2 text-lg font-semibold hover:opacity-80 transition-opacity"
+            >
               <span className="text-[var(--accent)]">◆</span>
               pBorsa
-            </div>
+            </Link>
             <p className="mt-2 text-sm text-[var(--muted)]">
               Automate your trading strategy. Sign up in seconds.
             </p>

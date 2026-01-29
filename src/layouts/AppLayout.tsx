@@ -15,10 +15,13 @@ export default function AppLayout() {
     <div className="min-h-screen bg-[var(--page-bg)] text-white">
       <div className="border-b border-[#132033] bg-[#0b1422]">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-2 text-lg font-semibold">
+          <button
+            onClick={() => nav("/")}
+            className="flex items-center gap-2 text-lg font-semibold hover:opacity-80 transition-opacity"
+          >
             <span className="text-[var(--accent)]">◆</span>
             pBorsa
-          </div>
+          </button>
           <nav className="hidden items-center gap-6 text-sm text-[var(--muted)] md:flex">
             <button
               className={isActive("/") ? "text-white" : undefined}
