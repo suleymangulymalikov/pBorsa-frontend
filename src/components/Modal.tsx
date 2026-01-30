@@ -1,4 +1,5 @@
 import { useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 
 type ModalProps = {
   isOpen: boolean;
@@ -20,24 +21,43 @@ export default function Modal({ isOpen, onClose, title, children }: ModalProps) 
   useEffect(() => {
     if (isOpen) {
       document.addEventListener("keydown", handleKeyDown);
+      const scrollBarWidth =
+        window.innerWidth - document.documentElement.clientWidth;
+      const prevOverflow = document.body.style.overflow;
+      const prevPaddingRight = document.body.style.paddingRight;
+
       document.body.style.overflow = "hidden";
+      if (scrollBarWidth > 0) {
+        document.body.style.paddingRight = `${scrollBarWidth}px`;
+      }
+
+      return () => {
+        document.removeEventListener("keydown", handleKeyDown);
+        document.body.style.overflow = prevOverflow;
+        document.body.style.paddingRight = prevPaddingRight;
+      };
     }
 
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
       document.body.style.overflow = "";
+      document.body.style.paddingRight = "";
     };
   }, [isOpen, handleKeyDown]);
 
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[9999] flex min-h-screen items-center justify-center px-4 py-8"
+      role="dialog"
+      aria-modal="true"
+    >
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
 
       {/* Modal */}
-      <div className="relative z-10 w-full max-w-lg mx-4 rounded-2xl border border-[#132033] bg-[#0f1b2d] shadow-xl">
+      <div className="relative z-10 w-full max-w-lg overflow-hidden rounded-2xl border border-[#132033] bg-[#0f1b2d] shadow-xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[#132033] px-6 py-4">
           <h2 className="text-lg font-semibold text-white">{title}</h2>
@@ -64,8 +84,11 @@ export default function Modal({ isOpen, onClose, title, children }: ModalProps) 
         </div>
 
         {/* Content */}
-        <div className="px-6 py-5">{children}</div>
+        <div className="max-h-[calc(100vh-12rem)] overflow-y-auto px-6 py-5">
+          {children}
+        </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
