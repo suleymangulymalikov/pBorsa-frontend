@@ -4,15 +4,17 @@ import { Link, useNavigate } from "react-router-dom";
 import { auth } from "../lib/firebase";
 import { api } from "../api/client";
 
-import type { BaseStrategy, UserStrategy } from "../api/strategies";
+import type { BaseStrategy, UserStrategy, StrategyPnL } from "../api/strategies";
 import {
   activateUserStrategy,
   createUserStrategy,
   deleteUserStrategy,
   getBaseStrategies,
+  getStrategyPnL,
   getUserStrategies,
   updateUserStrategy,
 } from "../api/strategies";
+import Modal from "../components/Modal";
 
 type MeResponse = {
   id: number;
@@ -46,6 +48,23 @@ function getBaseCode(s: any): string {
   );
 }
 
+function formatPnL(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "-";
+  const n = typeof value === "string" ? Number(value) : (value as number);
+  if (Number.isNaN(n)) return "-";
+  const formatted = n.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  return n >= 0 ? `+$${formatted}` : `-$${Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function isPnLNegative(value: unknown): boolean {
+  if (value === null || value === undefined || value === "") return false;
+  const n = typeof value === "string" ? Number(value) : (value as number);
+  return !Number.isNaN(n) && n < 0;
+}
+
 export default function StrategiesPage() {
   const nav = useNavigate();
 
@@ -67,6 +86,12 @@ export default function StrategiesPage() {
   const [name, setName] = useState("");
   const [symbol, setSymbol] = useState("AAPL");
   const [budget, setBudget] = useState<string>("1000");
+
+  // modal
+  const [showCreateModal, setShowCreateModal] = useState(false);
+
+  // PnL data
+  const [pnlData, setPnlData] = useState<Record<number, StrategyPnL>>({});
 
   const normalizedSymbol = useMemo(() => symbol.trim().toUpperCase(), [symbol]);
 
@@ -90,6 +115,27 @@ export default function StrategiesPage() {
 
       if (!baseCode && Array.isArray(bases) && bases.length > 0) {
         setBaseCode(String(bases[0].code));
+      }
+
+      // Fetch PnL for ACTIVE strategies
+      const userList = Array.isArray(users) ? users : [];
+      const activeStrategies = userList.filter(
+        (s: any) => String(s?.status ?? "") === "ACTIVE"
+      );
+
+      if (activeStrategies.length > 0) {
+        const pnlResults = await Promise.allSettled(
+          activeStrategies.map((s: any) => getStrategyPnL(uid, s.id))
+        );
+
+        const newPnlData: Record<number, StrategyPnL> = {};
+        pnlResults.forEach((result, index) => {
+          if (result.status === "fulfilled") {
+            const strategyId = activeStrategies[index].id;
+            newPnlData[strategyId] = result.value;
+          }
+        });
+        setPnlData(newPnlData);
       }
     } catch (e: any) {
       const errorMessage =
@@ -166,6 +212,7 @@ export default function StrategiesPage() {
 
       setMessage("Strategy created.");
       setName("");
+      setShowCreateModal(false);
       await loadAll(userId);
     } catch (e: any) {
       const errorMessage =
@@ -308,48 +355,55 @@ export default function StrategiesPage() {
           )}
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-          <div className="rounded-2xl border border-[#132033] bg-[#0f1b2d] p-6">
+        <div className="rounded-2xl border border-[#132033] bg-[#0f1b2d] p-6">
+          <div className="flex items-center justify-between">
             <div className="text-sm font-semibold">Base Strategies</div>
-            {baseStrategies.length === 0 ? (
-              <div className="mt-3 text-sm text-[var(--muted)]">
-                No base strategies found.
-              </div>
-            ) : (
-              <div className="mt-4 overflow-auto rounded-lg border border-[#132033]">
-                <table className="min-w-full text-sm">
-                  <thead className="bg-[#0b1728] text-left text-xs text-[var(--muted)]">
-                    <tr>
-                      <th className="px-4 py-3">Code</th>
-                      <th className="px-4 py-3">Name</th>
-                      <th className="px-4 py-3">Description</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#132033]">
-                    {baseStrategies.map((s) => (
-                      <tr key={s.code}>
-                        <td className="px-4 py-3 font-mono text-xs text-white">
-                          {s.code}
-                        </td>
-                        <td className="px-4 py-3 font-medium">{s.name}</td>
-                        <td className="px-4 py-3 text-[var(--muted)]">
-                          {s.description ?? "-"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="rounded-lg bg-[#1f6feb] px-4 py-2 text-sm font-semibold text-white"
+            >
+              + Create Strategy
+            </button>
           </div>
+          {baseStrategies.length === 0 ? (
+            <div className="mt-3 text-sm text-[var(--muted)]">
+              No base strategies found.
+            </div>
+          ) : (
+            <div className="mt-4 overflow-auto rounded-lg border border-[#132033]">
+              <table className="min-w-full text-sm">
+                <thead className="bg-[#0b1728] text-left text-xs text-[var(--muted)]">
+                  <tr>
+                    <th className="px-4 py-3">Code</th>
+                    <th className="px-4 py-3">Name</th>
+                    <th className="px-4 py-3">Description</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#132033]">
+                  {baseStrategies.map((s) => (
+                    <tr key={s.code}>
+                      <td className="px-4 py-3 font-mono text-xs text-white">
+                        {s.code}
+                      </td>
+                      <td className="px-4 py-3 font-medium">{s.name}</td>
+                      <td className="px-4 py-3 text-[var(--muted)]">
+                        {s.description ?? "-"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
 
-          <form
-            onSubmit={onCreate}
-            className="rounded-2xl border border-[#132033] bg-[#0f1b2d] p-6"
-          >
-            <div className="text-sm font-semibold">Create Strategy</div>
-
-            <label className="mt-4 block text-xs uppercase tracking-wide text-[var(--muted)]">
+        <Modal
+          isOpen={showCreateModal}
+          onClose={() => setShowCreateModal(false)}
+          title="Create Strategy"
+        >
+          <form onSubmit={onCreate}>
+            <label className="block text-xs uppercase tracking-wide text-[var(--muted)]">
               Base strategy
             </label>
             <select
@@ -407,14 +461,24 @@ export default function StrategiesPage() {
               Used by the strategy to limit how much it can trade.
             </div>
 
-            <button
-              disabled={loading || !userId || baseStrategies.length === 0}
-              className="mt-5 rounded-lg bg-[#1f6feb] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-            >
-              {loading ? "Working..." : "Create strategy"}
-            </button>
+            <div className="mt-5 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowCreateModal(false)}
+                className="rounded-lg border border-[#1f2e44] px-4 py-2 text-sm text-white"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={loading || !userId || baseStrategies.length === 0}
+                className="rounded-lg bg-[#1f6feb] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                {loading ? "Working..." : "Create strategy"}
+              </button>
+            </div>
           </form>
-        </div>
+        </Modal>
 
         <div className="rounded-2xl border border-[#132033] bg-[#0f1b2d] p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -449,6 +513,7 @@ export default function StrategiesPage() {
                     <th className="px-4 py-3">Base</th>
                     <th className="px-4 py-3">Symbol</th>
                     <th className="px-4 py-3">Budget</th>
+                    <th className="px-4 py-3">P/L</th>
                     <th className="px-4 py-3">Status</th>
                     <th className="px-4 py-3">Actions</th>
                   </tr>
@@ -499,6 +564,38 @@ export default function StrategiesPage() {
                           <td className="px-4 py-3">{s.symbol ?? "-"}</td>
                           <td className="px-4 py-3">
                             {String(s.budget ?? "-")}
+                          </td>
+                          <td className="px-4 py-3">
+                            {status === "ACTIVE" && pnlData[s.id] ? (
+                              <div className="text-xs">
+                                <div
+                                  className={
+                                    isPnLNegative(pnlData[s.id]?.unrealizedPnl)
+                                      ? "text-red-400"
+                                      : "text-emerald-400"
+                                  }
+                                  title="Unrealized P/L"
+                                >
+                                  {formatPnL(pnlData[s.id]?.unrealizedPnl)}
+                                </div>
+                                {pnlData[s.id]?.realizedPnl !== undefined && (
+                                  <div
+                                    className={`mt-0.5 text-[10px] ${
+                                      isPnLNegative(pnlData[s.id]?.realizedPnl)
+                                        ? "text-red-400/70"
+                                        : "text-emerald-400/70"
+                                    }`}
+                                    title="Realized P/L"
+                                  >
+                                    R: {formatPnL(pnlData[s.id]?.realizedPnl)}
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-xs text-[var(--muted)]">
+                                -
+                              </span>
+                            )}
                           </td>
                           <td className="px-4 py-3">
                             <Badge text={status} />

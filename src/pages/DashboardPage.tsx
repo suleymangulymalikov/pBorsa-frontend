@@ -273,24 +273,38 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="mt-6 rounded-2xl border border-[#1a2b45] bg-gradient-to-br from-[#0f1b2d] via-[#0f1b2d] to-[#0b1525] p-8 text-center">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#132742] text-white">
-            +
+        {strategies.length === 0 ? (
+          <div className="mt-6 rounded-2xl border border-[#1a2b45] bg-gradient-to-br from-[#0f1b2d] via-[#0f1b2d] to-[#0b1525] p-8 text-center">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#132742] text-white">
+              +
+            </div>
+            <h2 className="mt-4 text-lg font-semibold">
+              Create a New Trading Strategy
+            </h2>
+            <p className="mx-auto mt-2 max-w-md text-sm text-[var(--muted)]">
+              Use your strategy builder to configure, backtest, and activate new
+              strategies.
+            </p>
+            <button
+              className="mt-4 rounded-lg bg-[#1f6feb] px-4 py-2 text-sm font-semibold"
+              onClick={() => nav("/strategies")}
+            >
+              + Go to Strategy Editor
+            </button>
           </div>
-          <h2 className="mt-4 text-lg font-semibold">
-            Create a New Trading Strategy
-          </h2>
-          <p className="mx-auto mt-2 max-w-md text-sm text-[var(--muted)]">
-            Use your strategy builder to configure, backtest, and activate new
-            strategies.
-          </p>
-          <button
-            className="mt-4 rounded-lg bg-[#1f6feb] px-4 py-2 text-sm font-semibold"
-            onClick={() => nav("/strategies")}
-          >
-            + Go to Strategy Editor
-          </button>
-        </div>
+        ) : (
+          <div className="mt-6 flex items-center justify-between rounded-xl border border-[#1a2b45] bg-[#0f1b2d] px-4 py-3">
+            <span className="text-sm text-[var(--muted)]">
+              Want to add another strategy?
+            </span>
+            <button
+              className="rounded-lg bg-[#1f6feb] px-3 py-1.5 text-xs font-semibold text-white"
+              onClick={() => nav("/strategies")}
+            >
+              + New Strategy
+            </button>
+          </div>
+        )}
 
         <div className="mt-8 rounded-2xl border border-[#1a2b45] bg-[#0f1b2d] p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">

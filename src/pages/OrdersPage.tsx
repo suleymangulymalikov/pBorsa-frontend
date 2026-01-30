@@ -55,6 +55,30 @@ function pickOrderId(o: OrderDetail): string | null {
   return null;
 }
 
+function OrderBadge({ status }: { status: string }) {
+  let cls = "bg-gray-500/10 text-gray-300 border-gray-500/20";
+
+  if (status === "FILLED") {
+    cls = "bg-emerald-500/10 text-emerald-300 border-emerald-500/20";
+  } else if (status === "ACCEPTED" || status === "ACCEPTED_BY_APP") {
+    cls = "bg-blue-500/10 text-blue-300 border-blue-500/20";
+  } else if (status === "NEW" || status === "PENDING_NEW") {
+    cls = "bg-amber-500/10 text-amber-300 border-amber-500/20";
+  } else if (status === "CANCELED" || status === "REJECTED") {
+    cls = "bg-red-500/10 text-red-300 border-red-500/20";
+  } else if (status === "PARTIALLY_FILLED") {
+    cls = "bg-cyan-500/10 text-cyan-300 border-cyan-500/20";
+  }
+
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs ${cls}`}
+    >
+      {fmtStatus(status)}
+    </span>
+  );
+}
+
 export default function OrdersPage() {
   const nav = useNavigate();
   const location = useLocation();
@@ -273,18 +297,10 @@ export default function OrdersPage() {
 
             <button
               disabled={loading || !userId || strategyId === ""}
-              className="rounded-lg bg-[#1f6feb] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-              onClick={() => void loadOrders()}
-            >
-              {loading ? "Loading..." : "Load orders"}
-            </button>
-
-            <button
-              disabled={loading || !userId || strategyId === ""}
               className="rounded-lg border border-[#1f2e44] px-4 py-2 text-sm text-white disabled:opacity-60"
               onClick={() => void loadOrders()}
             >
-              Refresh
+              {loading ? "Loading..." : "Refresh Orders"}
             </button>
           </div>
 
@@ -335,8 +351,20 @@ export default function OrdersPage() {
           <div className="text-sm font-semibold">Orders List</div>
 
           {strategyId === "" ? (
-            <div className="mt-3 text-sm text-[var(--muted)]">
-              Choose a strategy, then click "Load orders".
+            <div className="mt-4 space-y-3">
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4">
+                <div className="text-sm font-medium text-amber-200">
+                  Select a Strategy to View Orders
+                </div>
+                <div className="mt-1 text-xs text-amber-300/80">
+                  Choose a strategy from the dropdown above. Orders will load
+                  automatically.
+                </div>
+              </div>
+              <div className="text-xs text-[var(--muted)]">
+                Tip: You can also view orders from the Strategies page by
+                clicking "Orders" on any strategy.
+              </div>
             </div>
           ) : orders.length === 0 ? (
             <div className="mt-3 text-sm text-[var(--muted)]">
@@ -347,7 +375,7 @@ export default function OrdersPage() {
               <table className="min-w-full text-sm">
                 <thead className="bg-[#0b1728] text-left text-xs text-[var(--muted)]">
                   <tr>
-                    <th className="px-4 py-3">Order ID</th>
+                    <th className="px-4 py-3 w-12">#</th>
                     <th className="px-4 py-3">Symbol</th>
                     <th className="px-4 py-3">Side</th>
                     <th className="px-4 py-3">Qty</th>
@@ -365,17 +393,21 @@ export default function OrdersPage() {
                     const type = o.type ?? o.orderType ?? "-";
                     const submitted =
                       o.submittedAt ?? o.createdAt ?? o.updatedAt ?? "-";
+                    const status = String(o.status ?? "");
 
                     return (
                       <tr
                         key={oid}
-                        className={isSelected ? "bg-[#0b1728]" : ""}
+                        className={`transition-colors cursor-pointer ${
+                          isSelected
+                            ? "bg-[#0b1728] border-l-2 border-l-[#1f6feb]"
+                            : "hover:bg-[#0b1728]/50"
+                        }`}
                         onClick={() => void onSelectOrder(o)}
-                        style={{ cursor: "pointer" }}
                         title="Click to view detail + history"
                       >
-                        <td className="px-4 py-3 font-mono text-xs">
-                          {pickOrderId(o) ?? "-"}
+                        <td className="px-4 py-3 text-xs text-[var(--muted)]">
+                          {idx + 1}
                         </td>
                         <td className="px-4 py-3 font-medium">
                           {o.symbol ?? "-"}
@@ -383,7 +415,9 @@ export default function OrdersPage() {
                         <td className="px-4 py-3">{o.side ?? "-"}</td>
                         <td className="px-4 py-3">{fmtNum(qty)}</td>
                         <td className="px-4 py-3">{type}</td>
-                        <td className="px-4 py-3">{fmtStatus(o.status)}</td>
+                        <td className="px-4 py-3">
+                          <OrderBadge status={status} />
+                        </td>
                         <td className="px-4 py-3">
                           {submitted ? fmtTime(submitted) : "-"}
                         </td>

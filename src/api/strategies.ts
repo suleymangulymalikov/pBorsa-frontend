@@ -74,3 +74,15 @@ export async function updateUserStrategy(
     req,
   );
 }
+
+export type StrategyPnL = {
+  realizedPnl?: number | string;
+  unrealizedPnl?: number | string;
+  [key: string]: unknown;
+};
+
+export async function getStrategyPnL(userId: number, strategyId: number) {
+  return api.get<StrategyPnL>(
+    `/api/v1/users/${userId}/strategies/${strategyId}/pnl`,
+  );
+}
