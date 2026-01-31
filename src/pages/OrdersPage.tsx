@@ -1,5 +1,5 @@
 import { onAuthStateChanged } from "firebase/auth";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { type UTCTimestamp } from "lightweight-charts";
 import { auth } from "../lib/firebase";
@@ -12,7 +12,7 @@ import {
   getOrdersByUserStrategy,
   getFilledOrdersByStrategy,
 } from "../api/orders";
-import { getHistoricalBars, type StockBar, type Timeframe } from "../api/barData";
+import { getHistoricalBars, getChunkSizeForTimeframe, type StockBar, type Timeframe } from "../api/barData";
 import StockChart, { type ChartMarker } from "../components/StockChart";
 
 type MeResponse = {
@@ -130,6 +130,17 @@ export default function OrdersPage() {
   const [chartLoading, setChartLoading] = useState(false);
   const [chartResetKey, setChartResetKey] = useState(0);
 
+  // Chart display options
+  const [showCandles, setShowCandles] = useState(true);
+  const [showLine, setShowLine] = useState(false);
+  const [showVolume, setShowVolume] = useState(true);
+
+  // Infinite scroll states
+  const [earliestLoadedDate, setEarliestLoadedDate] = useState<string | null>(null);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMoreHistory, setHasMoreHistory] = useState(true);
+  const loadMoreTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const selectedStrategy = useMemo(() => {
     if (strategyId === "") return null;
     return strategies.find((s) => s.id === strategyId) ?? null;
@@ -220,16 +231,84 @@ export default function OrdersPage() {
         getHistoricalBars(userId, selectedStrategy.symbol, chartTimeframe, { limit: 500 }),
       ]);
       setFilledOrders(Array.isArray(filled) ? filled : []);
-      setChartBars(sanitizeBars(bars));
+      const cleanedBars = sanitizeBars(bars);
+      setChartBars(cleanedBars);
       setChartResetKey((k) => k + 1);
+
+      // Track earliest loaded date for infinite scroll
+      if (cleanedBars.length > 0 && cleanedBars[0].timestamp) {
+        setEarliestLoadedDate(cleanedBars[0].timestamp);
+      } else {
+        setEarliestLoadedDate(null);
+      }
+      setHasMoreHistory(true);
     } catch (e) {
       console.error("Failed to load chart data:", e);
       setFilledOrders([]);
       setChartBars([]);
+      setEarliestLoadedDate(null);
     } finally {
       setChartLoading(false);
     }
   }, [userId, strategyId, selectedStrategy?.symbol, chartTimeframe]);
+
+  const loadMoreHistory = useCallback(async () => {
+    if (!userId || !selectedStrategy?.symbol || !earliestLoadedDate || isLoadingMore || !hasMoreHistory) {
+      return;
+    }
+
+    setIsLoadingMore(true);
+
+    try {
+      // Calculate end time as 1 second before the earliest loaded date
+      const earliestDate = new Date(earliestLoadedDate);
+      const endDate = new Date(earliestDate.getTime() - 1000);
+
+      // Calculate start based on chunk size for the timeframe
+      const chunkDays = getChunkSizeForTimeframe(chartTimeframe);
+      const startDate = new Date(endDate.getTime() - chunkDays * 24 * 60 * 60 * 1000);
+
+      const data = await getHistoricalBars(userId, selectedStrategy.symbol, chartTimeframe, {
+        start: startDate.toISOString(),
+        end: endDate.toISOString(),
+        limit: 5000,
+      });
+
+      const newBars = sanitizeBars(Array.isArray(data) ? data : []);
+
+      if (newBars.length === 0) {
+        setHasMoreHistory(false);
+        return;
+      }
+
+      setChartBars((prev) => {
+        // Filter out duplicates based on timestamp
+        const existingTimestamps = new Set(prev.map((b) => b.timestamp));
+        const uniqueNewBars = newBars.filter((b) => !existingTimestamps.has(b.timestamp));
+        return [...uniqueNewBars, ...prev];
+      });
+
+      // Update earliest loaded date
+      if (newBars.length > 0 && newBars[0].timestamp) {
+        setEarliestLoadedDate(newBars[0].timestamp);
+      }
+    } catch (e) {
+      console.error("Failed to load more history:", e);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [userId, selectedStrategy?.symbol, earliestLoadedDate, isLoadingMore, hasMoreHistory, chartTimeframe]);
+
+  const onScrollNearStart = useCallback(() => {
+    // Debounce the load more calls
+    if (loadMoreTimeoutRef.current) {
+      return;
+    }
+    loadMoreTimeoutRef.current = setTimeout(() => {
+      loadMoreTimeoutRef.current = null;
+      void loadMoreHistory();
+    }, 300);
+  }, [loadMoreHistory]);
 
   useEffect(() => {
     if (strategyId !== "" && selectedStrategy?.symbol) {
@@ -237,6 +316,7 @@ export default function OrdersPage() {
     } else {
       setChartBars([]);
       setFilledOrders([]);
+      setEarliestLoadedDate(null);
     }
   }, [strategyId, selectedStrategy?.symbol, chartTimeframe, loadChartData]);
 
@@ -663,13 +743,17 @@ export default function OrdersPage() {
                   : "Select a strategy to view chart with order markers"}
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <select
                 className="rounded-lg border border-[#1f2e44] bg-[#0b1728] px-3 py-2 text-sm text-white"
                 value={chartTimeframe}
                 onChange={(e) => setChartTimeframe(e.target.value as Timeframe)}
                 disabled={!selectedStrategy?.symbol}
               >
+                <option value="1Min">1Min</option>
+                <option value="5Min">5Min</option>
+                <option value="15Min">15Min</option>
+                <option value="30Min">30Min</option>
                 <option value="1Hour">1Hour</option>
                 <option value="4Hour">4Hour</option>
                 <option value="1Day">1Day</option>
@@ -682,7 +766,40 @@ export default function OrdersPage() {
               >
                 {chartLoading ? "Loading..." : "Refresh"}
               </button>
+              {isLoadingMore && (
+                <span className="text-xs text-[var(--muted)]">Loading more...</span>
+              )}
             </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-4 text-sm">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={showCandles}
+                onChange={(e) => setShowCandles(e.target.checked)}
+                disabled={!selectedStrategy?.symbol}
+              />
+              Candles
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={showLine}
+                onChange={(e) => setShowLine(e.target.checked)}
+                disabled={!selectedStrategy?.symbol}
+              />
+              Line
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={showVolume}
+                onChange={(e) => setShowVolume(e.target.checked)}
+                disabled={!selectedStrategy?.symbol}
+              />
+              Volume
+            </label>
           </div>
 
           <div className="mt-4 rounded-2xl border border-[#132033] bg-[#0b1728] p-3">
@@ -701,13 +818,14 @@ export default function OrdersPage() {
             ) : (
               <StockChart
                 bars={chartBars}
-                showCandles={true}
-                showLine={false}
-                showVolume={true}
+                showCandles={showCandles}
+                showLine={showLine}
+                showVolume={showVolume}
                 resetKey={chartResetKey}
                 timeframe={chartTimeframe}
                 markers={chartMarkers}
                 height={300}
+                onScrollNearStart={onScrollNearStart}
               />
             )}
           </div>
