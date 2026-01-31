@@ -1,15 +1,19 @@
 import { onAuthStateChanged } from "firebase/auth";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { type UTCTimestamp } from "lightweight-charts";
 import { auth } from "../lib/firebase";
 import { api } from "../api/client";
 
-import type { OrderDetail, OrderHistoryEntry } from "../api/orders";
+import type { OrderDetail, OrderHistoryEntry, FilledOrder } from "../api/orders";
 import {
   getOrderDetail,
   getOrderHistory,
   getOrdersByUserStrategy,
+  getFilledOrdersByStrategy,
 } from "../api/orders";
+import { getHistoricalBars, type StockBar, type Timeframe } from "../api/barData";
+import StockChart, { type ChartMarker } from "../components/StockChart";
 
 type MeResponse = {
   id: number;
@@ -53,6 +57,22 @@ function pickOrderId(o: OrderDetail): string | null {
   if (typeof o.id === "string") return o.id;
   if (typeof o.orderId === "string") return o.orderId;
   return null;
+}
+
+function toUtcTimestamp(value: string): UTCTimestamp | null {
+  const t = new Date(value).getTime();
+  if (Number.isNaN(t)) return null;
+  return Math.floor(t / 1000) as UTCTimestamp;
+}
+
+function sanitizeBars(bars: StockBar[]) {
+  return [...bars]
+    .filter((b) => b.timestamp)
+    .sort((a, b) => {
+      const ta = new Date(a.timestamp ?? 0).getTime();
+      const tb = new Date(b.timestamp ?? 0).getTime();
+      return ta - tb;
+    });
 }
 
 function OrderBadge({ status }: { status: string }) {
@@ -102,6 +122,13 @@ export default function OrdersPage() {
 
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+
+  // Chart state
+  const [chartBars, setChartBars] = useState<StockBar[]>([]);
+  const [filledOrders, setFilledOrders] = useState<FilledOrder[]>([]);
+  const [chartTimeframe, setChartTimeframe] = useState<Timeframe>("1Day");
+  const [chartLoading, setChartLoading] = useState(false);
+  const [chartResetKey, setChartResetKey] = useState(0);
 
   const selectedStrategy = useMemo(() => {
     if (strategyId === "") return null;
@@ -158,6 +185,60 @@ export default function OrdersPage() {
     };
     return [...strategies].sort((a, b) => rank(a) - rank(b));
   }, [strategies]);
+
+  const chartMarkers = useMemo((): ChartMarker[] => {
+    if (!selectedStrategy?.symbol) return [];
+    return filledOrders
+      .filter((o) => o.symbol === selectedStrategy.symbol)
+      .map((order) => {
+        const time = toUtcTimestamp(order.filledAt);
+        if (!time) return null;
+        const isBuy = order.side === "BUY";
+        return {
+          time,
+          position: isBuy ? "belowBar" : "aboveBar",
+          color: isBuy ? "#22c55e" : "#ef4444",
+          shape: isBuy ? "arrowUp" : "arrowDown",
+          text: String(order.quantity),
+        } as ChartMarker;
+      })
+      .filter(Boolean) as ChartMarker[];
+  }, [filledOrders, selectedStrategy?.symbol]);
+
+  const filledOrdersSummary = useMemo(() => {
+    const buyCount = filledOrders.filter((o) => o.side === "BUY").length;
+    const sellCount = filledOrders.filter((o) => o.side === "SELL").length;
+    return { buyCount, sellCount };
+  }, [filledOrders]);
+
+  const loadChartData = useCallback(async () => {
+    if (!userId || strategyId === "" || !selectedStrategy?.symbol) return;
+    setChartLoading(true);
+    try {
+      const [filled, bars] = await Promise.all([
+        getFilledOrdersByStrategy(userId, strategyId as number),
+        getHistoricalBars(userId, selectedStrategy.symbol, chartTimeframe, { limit: 500 }),
+      ]);
+      setFilledOrders(Array.isArray(filled) ? filled : []);
+      setChartBars(sanitizeBars(bars));
+      setChartResetKey((k) => k + 1);
+    } catch (e) {
+      console.error("Failed to load chart data:", e);
+      setFilledOrders([]);
+      setChartBars([]);
+    } finally {
+      setChartLoading(false);
+    }
+  }, [userId, strategyId, selectedStrategy?.symbol, chartTimeframe]);
+
+  useEffect(() => {
+    if (strategyId !== "" && selectedStrategy?.symbol) {
+      void loadChartData();
+    } else {
+      setChartBars([]);
+      setFilledOrders([]);
+    }
+  }, [strategyId, selectedStrategy?.symbol, chartTimeframe, loadChartData]);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
@@ -565,6 +646,98 @@ export default function OrdersPage() {
               </div>
             )}
           </div>
+        </div>
+
+        {/* Chart Section */}
+        <div className="rounded-2xl border border-[#132033] bg-[#0f1b2d] p-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <div className="text-sm font-semibold">
+                {selectedStrategy?.symbol
+                  ? `${selectedStrategy.symbol} Price Chart`
+                  : "Price Chart"}
+              </div>
+              <div className="mt-1 text-xs text-[var(--muted)]">
+                {selectedStrategy?.symbol
+                  ? `Filled orders: ${filledOrdersSummary.buyCount} BUY, ${filledOrdersSummary.sellCount} SELL`
+                  : "Select a strategy to view chart with order markers"}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <select
+                className="rounded-lg border border-[#1f2e44] bg-[#0b1728] px-3 py-2 text-sm text-white"
+                value={chartTimeframe}
+                onChange={(e) => setChartTimeframe(e.target.value as Timeframe)}
+                disabled={!selectedStrategy?.symbol}
+              >
+                <option value="1Hour">1Hour</option>
+                <option value="4Hour">4Hour</option>
+                <option value="1Day">1Day</option>
+                <option value="1Week">1Week</option>
+              </select>
+              <button
+                className="rounded-lg border border-[#1f2e44] px-3 py-2 text-xs text-white disabled:opacity-60"
+                onClick={() => void loadChartData()}
+                disabled={chartLoading || !selectedStrategy?.symbol}
+              >
+                {chartLoading ? "Loading..." : "Refresh"}
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-[#132033] bg-[#0b1728] p-3">
+            {!selectedStrategy?.symbol ? (
+              <div className="flex h-[300px] items-center justify-center text-sm text-[var(--muted)]">
+                Select a strategy to view the chart
+              </div>
+            ) : chartLoading ? (
+              <div className="flex h-[300px] items-center justify-center text-sm text-[var(--muted)]">
+                Loading chart data...
+              </div>
+            ) : chartBars.length === 0 ? (
+              <div className="flex h-[300px] items-center justify-center text-sm text-[var(--muted)]">
+                No price data available
+              </div>
+            ) : (
+              <StockChart
+                bars={chartBars}
+                showCandles={true}
+                showLine={false}
+                showVolume={true}
+                resetKey={chartResetKey}
+                timeframe={chartTimeframe}
+                markers={chartMarkers}
+                height={300}
+              />
+            )}
+          </div>
+
+          {selectedStrategy?.symbol && (
+            <div className="mt-3 flex items-center gap-4 text-xs text-[var(--muted)]">
+              <div className="flex items-center gap-1">
+                <span
+                  className="inline-block h-0 w-0"
+                  style={{
+                    borderLeft: "5px solid transparent",
+                    borderRight: "5px solid transparent",
+                    borderBottom: "8px solid #22c55e",
+                  }}
+                />
+                <span>BUY</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span
+                  className="inline-block h-0 w-0"
+                  style={{
+                    borderLeft: "5px solid transparent",
+                    borderRight: "5px solid transparent",
+                    borderTop: "8px solid #ef4444",
+                  }}
+                />
+                <span>SELL</span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

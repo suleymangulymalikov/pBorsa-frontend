@@ -1,36 +1,44 @@
 import { onAuthStateChanged } from "firebase/auth";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { auth } from "../lib/firebase";
 import { api } from "../api/client";
-
-import type { Bar, Period, Quote, Snapshot, Trade } from "../api/marketData";
 import {
-  addPollingSymbols,
-  getBars,
-  getPollingQuotes,
-  getQuote,
-  getSnapshot,
-  removePollingSymbols,
-  startPolling,
-  stopPolling,
-} from "../api/marketData";
+  type BarDataConfig,
+  type StockBar,
+  type Timeframe,
+  getBarConfig,
+  getChunkSizeForTimeframe,
+  getHistoricalBars,
+  getLatestBar,
+  getLatestBars,
+} from "../api/barData";
+import StockChart, { type ChartHover } from "../components/StockChart";
 
 type MeResponse = {
   id: number;
   firebaseUid: string;
   email: string;
-  displayName?: string | null;
-  provider?: string | null;
 };
 
-type UiTf = "1Min" | "5Min" | "15Min" | "1Hour" | "1Day";
+type DatePreset = "1W" | "1M" | "3M" | "6M" | "1Y" | "YTD" | "ALL";
 
-function fmtNum(v: unknown) {
-  if (v === null || v === undefined || v === "") return "-";
-  const n = typeof v === "string" ? Number(v) : (v as number);
-  if (Number.isNaN(n)) return String(v);
-  return n.toLocaleString(undefined, { maximumFractionDigits: 4 });
+const FALLBACK_TIMEFRAMES: Timeframe[] = [
+  "1Min",
+  "5Min",
+  "15Min",
+  "30Min",
+  "1Hour",
+  "4Hour",
+  "1Day",
+  "1Week",
+];
+
+function fmtNum(value: unknown, max = 4) {
+  if (value === null || value === undefined || value === "") return "-";
+  const n = typeof value === "string" ? Number(value) : (value as number);
+  if (Number.isNaN(n)) return String(value);
+  return n.toLocaleString(undefined, { maximumFractionDigits: max });
 }
 
 function fmtTime(value: unknown) {
@@ -40,34 +48,65 @@ function fmtTime(value: unknown) {
   return d.toLocaleString();
 }
 
-function buildSparkPath(values: number[], height = 72) {
-  if (values.length < 2) return "";
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const span = max - min || 1;
-  return values
-    .map((v, i) => {
-      const x = (i / (values.length - 1)) * 100;
-      const y = height - ((v - min) / span) * height;
-      return `${i === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
-    })
-    .join(" ");
+function normalizeSymbols(value: string) {
+  const seen = new Set<string>();
+  return value
+    .split(",")
+    .map((s) => s.trim().toUpperCase())
+    .filter((symbol) => {
+      if (!symbol || seen.has(symbol)) return false;
+      seen.add(symbol);
+      return true;
+    });
 }
 
-function tfToBackend(tf: UiTf): { timeframe: number; period: Period } {
-  switch (tf) {
-    case "1Min":
-      return { timeframe: 1, period: "MINUTE" };
-    case "5Min":
-      return { timeframe: 5, period: "MINUTE" };
-    case "15Min":
-      return { timeframe: 15, period: "MINUTE" };
-    case "1Hour":
-      return { timeframe: 1, period: "HOUR" };
-    case "1Day":
+function sanitizeBars(bars: StockBar[]) {
+  return [...bars]
+    .filter((b) => b.timestamp)
+    .sort((a, b) => {
+      const ta = new Date(a.timestamp ?? 0).getTime();
+      const tb = new Date(b.timestamp ?? 0).getTime();
+      return ta - tb;
+    });
+}
+
+function getDateRangeFromPreset(preset: DatePreset): { start: string; end: string } {
+  const now = new Date();
+  const end = now.toISOString();
+  let start: Date;
+
+  switch (preset) {
+    case "1W":
+      start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      break;
+    case "1M":
+      start = new Date(now);
+      start.setMonth(start.getMonth() - 1);
+      break;
+    case "3M":
+      start = new Date(now);
+      start.setMonth(start.getMonth() - 3);
+      break;
+    case "6M":
+      start = new Date(now);
+      start.setMonth(start.getMonth() - 6);
+      break;
+    case "1Y":
+      start = new Date(now);
+      start.setFullYear(start.getFullYear() - 1);
+      break;
+    case "YTD":
+      start = new Date(now.getFullYear(), 0, 1);
+      break;
+    case "ALL":
+      start = new Date(2000, 0, 1);
+      break;
     default:
-      return { timeframe: 1, period: "DAY" };
+      start = new Date(now);
+      start.setMonth(start.getMonth() - 1);
   }
+
+  return { start: start.toISOString(), end };
 }
 
 export default function MarketDataPage() {
@@ -76,32 +115,209 @@ export default function MarketDataPage() {
   const [me, setMe] = useState<MeResponse | null>(null);
   const userId = me?.id ?? null;
 
-  const [symbol, setSymbol] = useState("AAPL");
-  const [uiTf, setUiTf] = useState<UiTf>("1Day");
-  const [limit, setLimit] = useState(50);
+  const [config, setConfig] = useState<BarDataConfig | null>(null);
+  const [timeframeOptions, setTimeframeOptions] = useState<Timeframe[]>(
+    FALLBACK_TIMEFRAMES,
+  );
+  const [timeframe, setTimeframe] = useState<Timeframe>("5Min");
+  const [datePreset, setDatePreset] = useState<DatePreset>("1M");
 
-  const [quote, setQuote] = useState<Quote | null>(null);
-  const [bars, setBars] = useState<Bar[]>([]);
-  const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  const [symbolsInput, setSymbolsInput] = useState("AAPL,MSFT,NVDA");
+  const [symbols, setSymbols] = useState<string[]>(
+    normalizeSymbols("AAPL,MSFT,NVDA"),
+  );
+  const [activeSymbol, setActiveSymbol] = useState("AAPL");
 
-  const [pollSymbols, setPollSymbols] = useState("AAPL,MSFT");
-  const [pollInterval, setPollInterval] = useState(5);
-  const [polling, setPolling] = useState(false);
-  const [polledQuotes, setPolledQuotes] = useState<Quote[]>([]);
+  const [bars, setBars] = useState<StockBar[]>([]);
+  const [latestBars, setLatestBars] = useState<Record<string, StockBar>>({});
+  const [hover, setHover] = useState<ChartHover | null>(null);
 
   const [loading, setLoading] = useState(false);
+  const [loadingLatest, setLoadingLatest] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  const normalizedSymbol = useMemo(() => symbol.trim().toUpperCase(), [symbol]);
-  const normalizedPollSymbols = useMemo(
-    () =>
-      pollSymbols
-        .split(",")
-        .map((s) => s.trim().toUpperCase())
-        .filter(Boolean),
-    [pollSymbols],
-  );
+  const [showCandles, setShowCandles] = useState(true);
+  const [showLine, setShowLine] = useState(true);
+  const [showVolume, setShowVolume] = useState(true);
+  const [chartResetKey, setChartResetKey] = useState(0);
+
+  // Infinite scroll states
+  const [earliestLoadedDate, setEarliestLoadedDate] = useState<string | null>(null);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMoreHistory, setHasMoreHistory] = useState(true);
+  const loadMoreTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const updateIntervalSeconds = config?.updateIntervalSeconds ?? 30;
+  const lastBar = bars[bars.length - 1];
+
+  const paramsRef = useRef({
+    userId,
+    activeSymbol,
+    datePreset,
+    timeframe,
+    config,
+  });
+
+  paramsRef.current = {
+    userId,
+    activeSymbol,
+    datePreset,
+    timeframe,
+    config,
+  };
+
+  const refreshWatchlist = useCallback(async () => {
+    if (!userId || symbols.length === 0) return;
+    setLoadingLatest(true);
+    setError(null);
+    try {
+      const data = await getLatestBars(userId, symbols, timeframe);
+      setLatestBars(data || {});
+    } catch (e: any) {
+      const errorMessage =
+        e?.message || "Failed to load latest bars for watchlist.";
+      setError(errorMessage);
+    } finally {
+      setLoadingLatest(false);
+    }
+  }, [symbols, timeframe, userId]);
+
+  const loadBars = useCallback(async () => {
+    const {
+      userId: currentUserId,
+      activeSymbol: currentSymbol,
+      datePreset: currentPreset,
+      timeframe: currentTimeframe,
+      config: currentConfig,
+    } = paramsRef.current;
+
+    if (!currentUserId || !currentSymbol) return;
+    setLoading(true);
+    setError(null);
+    setMessage(null);
+
+    try {
+      const { start, end } = getDateRangeFromPreset(currentPreset);
+      const limit = currentConfig?.maxBarsPerRequest ?? 5000;
+
+      const data = await getHistoricalBars(currentUserId, currentSymbol, currentTimeframe, {
+        start,
+        end,
+        limit,
+      });
+
+      const cleaned = sanitizeBars(Array.isArray(data) ? data : []);
+      setBars(cleaned);
+      setChartResetKey((k) => k + 1);
+      setMessage(`Loaded ${cleaned.length} bars for ${currentSymbol}.`);
+
+      // Track earliest loaded date for infinite scroll
+      if (cleaned.length > 0 && cleaned[0].timestamp) {
+        setEarliestLoadedDate(cleaned[0].timestamp);
+      } else {
+        setEarliestLoadedDate(null);
+      }
+      setHasMoreHistory(true);
+
+      setLatestBars((prev) => ({
+        ...prev,
+        ...(cleaned.length
+          ? { [currentSymbol]: cleaned[cleaned.length - 1] }
+          : {}),
+      }));
+    } catch (e: any) {
+      const errorMessage =
+        e?.message || "Failed to load bars. Please try again.";
+      setError(errorMessage);
+      setBars([]);
+      setEarliestLoadedDate(null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const onApplyWatchlist = () => {
+    const next = normalizeSymbols(symbolsInput);
+    if (next.length === 0) {
+      setError("Please add at least one symbol.");
+      return;
+    }
+    setSymbols(next);
+    if (!next.includes(activeSymbol)) {
+      setActiveSymbol(next[0]);
+    }
+    setError(null);
+    void refreshWatchlist();
+  };
+
+  const onRemoveSymbol = (symbol: string) => {
+    const next = symbols.filter((s) => s !== symbol);
+    setSymbols(next);
+    setSymbolsInput(next.join(","));
+    if (activeSymbol === symbol) {
+      setActiveSymbol(next[0] ?? "");
+    }
+  };
+
+  const loadMoreHistory = useCallback(async () => {
+    if (!userId || !activeSymbol || !earliestLoadedDate || isLoadingMore || !hasMoreHistory) {
+      return;
+    }
+
+    setIsLoadingMore(true);
+
+    try {
+      // Calculate end time as 1 second before the earliest loaded date
+      const earliestDate = new Date(earliestLoadedDate);
+      const endDate = new Date(earliestDate.getTime() - 1000);
+
+      // Calculate start based on chunk size for the timeframe
+      const chunkDays = getChunkSizeForTimeframe(timeframe);
+      const startDate = new Date(endDate.getTime() - chunkDays * 24 * 60 * 60 * 1000);
+
+      const data = await getHistoricalBars(userId, activeSymbol, timeframe, {
+        start: startDate.toISOString(),
+        end: endDate.toISOString(),
+        limit: config?.maxBarsPerRequest ?? 5000,
+      });
+
+      const newBars = sanitizeBars(Array.isArray(data) ? data : []);
+
+      if (newBars.length === 0) {
+        setHasMoreHistory(false);
+        return;
+      }
+
+      setBars((prev) => {
+        // Filter out duplicates based on timestamp
+        const existingTimestamps = new Set(prev.map((b) => b.timestamp));
+        const uniqueNewBars = newBars.filter((b) => !existingTimestamps.has(b.timestamp));
+        return [...uniqueNewBars, ...prev];
+      });
+
+      // Update earliest loaded date
+      if (newBars.length > 0 && newBars[0].timestamp) {
+        setEarliestLoadedDate(newBars[0].timestamp);
+      }
+    } catch (e: any) {
+      // Silent fail for infinite scroll loading
+      console.error("Failed to load more history:", e);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [userId, activeSymbol, earliestLoadedDate, isLoadingMore, hasMoreHistory, timeframe, config]);
+
+  const onScrollNearStart = useCallback(() => {
+    // Debounce the load more calls
+    if (loadMoreTimeoutRef.current) {
+      return;
+    }
+    loadMoreTimeoutRef.current = setTimeout(() => {
+      loadMoreTimeoutRef.current = null;
+      void loadMoreHistory();
+    }, 300);
+  }, [loadMoreHistory]);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
@@ -114,9 +330,27 @@ export default function MarketDataPage() {
         setError(null);
         const data = await api.get<MeResponse>("/api/v1/users/me");
         setMe(data);
+
+        const cfg = await getBarConfig();
+        if (cfg) {
+          setConfig(cfg);
+          const supported =
+            cfg.supportedTimeframes
+              ?.filter((tf): tf is Timeframe =>
+                FALLBACK_TIMEFRAMES.includes(tf as Timeframe),
+              )
+              .filter(Boolean) ?? [];
+          const options = supported.length ? supported : FALLBACK_TIMEFRAMES;
+          setTimeframeOptions(options);
+          const defaultTf =
+            cfg.defaultTimeframe && options.includes(cfg.defaultTimeframe)
+              ? cfg.defaultTimeframe
+              : options[0];
+          setTimeframe(defaultTf);
+        }
       } catch (e: any) {
         const errorMessage =
-          e?.message || "Unable to load user information. Please try again.";
+          e?.message || "Unable to load configuration. Please try again.";
         setError(errorMessage);
       }
     });
@@ -124,175 +358,66 @@ export default function MarketDataPage() {
     return () => unsub();
   }, [nav]);
 
-  const onFetch = async (e?: React.FormEvent) => {
-    e?.preventDefault();
-    if (!userId) return;
+  const [requestKey, setRequestKey] = useState(0);
 
-    const sym = normalizedSymbol;
-    if (!sym) return;
+  useEffect(() => {
+    if (!userId || !activeSymbol) return;
+    setRequestKey((k) => k + 1);
+  }, [userId, activeSymbol, timeframe, datePreset]);
 
-    const { timeframe, period } = tfToBackend(uiTf);
+  useEffect(() => {
+    if (!requestKey) return;
+    void loadBars();
+  }, [requestKey, loadBars]);
 
-    setLoading(true);
-    setError(null);
-    setMessage(null);
+  useEffect(() => {
+    if (!userId || !activeSymbol) return;
 
-    try {
-      const [q, b] = await Promise.all([
-        getQuote(userId, sym),
-        getBars(userId, sym, timeframe, period, limit),
-      ]);
+    let cancelled = false;
+    const intervalMs = Math.max(5, updateIntervalSeconds) * 1000;
 
-      setQuote(q);
-      setBars(Array.isArray(b) ? b : []);
-      setMessage(`Loaded market data for ${sym}.`);
-    } catch (e: any) {
-      const errorMessage =
-        e?.message || "Failed to load market data. Please try again.";
-      setError(errorMessage);
-      setQuote(null);
-      setBars([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+    const poll = async () => {
+      try {
+        const latest = await getLatestBar(userId, activeSymbol, timeframe);
+        if (cancelled || !latest?.timestamp) return;
 
-  const onSnapshot = async () => {
-    if (!userId) return;
-    if (normalizedPollSymbols.length === 0) return;
+        const latestTimestamp = latest.timestamp;
+        setBars((prev) => {
+          if (prev.length === 0) return [latest];
+          const next = [...prev];
+          const last = next[next.length - 1];
+          if (last?.timestamp === latestTimestamp) {
+            next[next.length - 1] = { ...last, ...latest };
+          } else if (
+            new Date(latestTimestamp).getTime() >
+            new Date(last?.timestamp ?? "1970-01-01").getTime()
+          ) {
+            next.push(latest);
+          }
+          return next;
+        });
+        setLatestBars((prev) => ({ ...prev, [activeSymbol]: latest }));
+      } catch {
+        // Keep silent on polling errors
+      }
+    };
 
-    setLoading(true);
-    setError(null);
-    setMessage(null);
+    const id = setInterval(() => {
+      void poll();
+    }, intervalMs);
 
-    try {
-      const data = await getSnapshot(userId, normalizedPollSymbols);
-      setSnapshot(data);
-      setMessage("Snapshot loaded.");
-    } catch (e: any) {
-      const errorMessage =
-        e?.message || "Failed to load snapshot. Please try again.";
-      setError(errorMessage);
-      setSnapshot(null);
-    } finally {
-      setLoading(false);
-    }
-  };
+    void poll();
 
-  const onStartPolling = async () => {
-    if (!userId) return;
-    if (normalizedPollSymbols.length === 0) return;
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [userId, activeSymbol, timeframe, updateIntervalSeconds]);
 
-    setLoading(true);
-    setError(null);
-    setMessage(null);
-
-    try {
-      await startPolling(userId, normalizedPollSymbols, pollInterval);
-      setPolling(true);
-      setMessage("Polling started.");
-    } catch (e: any) {
-      const errorMessage =
-        e?.message || "Failed to start polling. Please try again.";
-      setError(errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const onStopPolling = async () => {
-    if (!userId) return;
-
-    setLoading(true);
-    setError(null);
-    setMessage(null);
-
-    try {
-      await stopPolling(userId);
-      setPolling(false);
-      setMessage("Polling stopped.");
-    } catch (e: any) {
-      const errorMessage =
-        e?.message || "Failed to stop polling. Please try again.";
-      setError(errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const onAddSymbols = async () => {
-    if (!userId) return;
-    if (normalizedPollSymbols.length === 0) return;
-
-    setLoading(true);
-    setError(null);
-    setMessage(null);
-
-    try {
-      await addPollingSymbols(userId, normalizedPollSymbols);
-      setMessage("Symbols added to polling.");
-    } catch (e: any) {
-      const errorMessage =
-        e?.message || "Failed to add symbols. Please try again.";
-      setError(errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const onRemoveSymbols = async () => {
-    if (!userId) return;
-    if (normalizedPollSymbols.length === 0) return;
-
-    setLoading(true);
-    setError(null);
-    setMessage(null);
-
-    try {
-      await removePollingSymbols(userId, normalizedPollSymbols);
-      setMessage("Symbols removed from polling.");
-    } catch (e: any) {
-      const errorMessage =
-        e?.message || "Failed to remove symbols. Please try again.";
-      setError(errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const onFetchPolled = async () => {
-    if (!userId) return;
-
-    setLoading(true);
-    setError(null);
-    setMessage(null);
-
-    try {
-      const data = await getPollingQuotes(userId);
-      setPolledQuotes(Array.isArray(data) ? data : []);
-      setMessage("Polled quotes loaded.");
-    } catch (e: any) {
-      const errorMessage =
-        e?.message || "Failed to load polled quotes. Please try again.";
-      setError(errorMessage);
-      setPolledQuotes([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const quoteSpread =
-    quote?.askPrice !== undefined && quote?.bidPrice !== undefined
-      ? quote.askPrice - quote.bidPrice
-      : null;
-  const sparkValues = useMemo(
-    () =>
-      bars
-        .map((b) => (typeof b.close === "number" ? b.close : null))
-        .filter((v): v is number => v !== null),
-    [bars],
-  );
-  const sparkPath = useMemo(() => buildSparkPath(sparkValues), [sparkValues]);
+  useEffect(() => {
+    if (!userId || symbols.length === 0) return;
+    void refreshWatchlist();
+  }, [refreshWatchlist, userId, symbols.length]);
 
   return (
     <div className="min-h-screen bg-[var(--page-bg)] text-white">
@@ -302,48 +427,14 @@ export default function MarketDataPage() {
             <div>
               <h1 className="text-2xl font-semibold">Market Data</h1>
               <p className="mt-2 text-sm text-[var(--muted)]">
-                Quotes, bars, snapshots, and polling for{" "}
+                OHLCV bars for{" "}
                 <span className="text-white">{me?.email ?? "..."}</span>
               </p>
             </div>
+            <div className="rounded-lg border border-[#132033] bg-[#0b1728] px-3 py-2 text-xs text-[var(--muted)]">
+              Live updates every {updateIntervalSeconds}s
+            </div>
           </div>
-
-          <form onSubmit={onFetch} className="mt-5 flex flex-wrap gap-3">
-            <input
-              className="w-40 rounded-lg border border-[#1f2e44] bg-[#0b1728] px-3 py-2 text-sm text-white"
-              value={symbol}
-              onChange={(e) => setSymbol(e.target.value)}
-              placeholder="AAPL"
-            />
-
-            <select
-              className="rounded-lg border border-[#1f2e44] bg-[#0b1728] px-3 py-2 text-sm text-white"
-              value={uiTf}
-              onChange={(e) => setUiTf(e.target.value as UiTf)}
-            >
-              <option value="1Min">1Min</option>
-              <option value="5Min">5Min</option>
-              <option value="15Min">15Min</option>
-              <option value="1Hour">1Hour</option>
-              <option value="1Day">1Day</option>
-            </select>
-
-            <input
-              type="number"
-              className="w-28 rounded-lg border border-[#1f2e44] bg-[#0b1728] px-3 py-2 text-sm text-white"
-              value={limit}
-              min={1}
-              max={500}
-              onChange={(e) => setLimit(Number(e.target.value))}
-            />
-
-            <button
-              disabled={loading || !userId}
-              className="rounded-lg bg-[#1f6feb] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-            >
-              {loading ? "Loading..." : "Fetch"}
-            </button>
-          </form>
 
           {message && (
             <div className="mt-4 rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm text-emerald-200">
@@ -357,411 +448,234 @@ export default function MarketDataPage() {
           )}
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="rounded-2xl border border-[#132033] bg-[#0f1b2d] p-6">
-            <div className="text-sm font-semibold">Quote</div>
-            {quote ? (
-              <div className="mt-4 grid gap-4">
-                <div className="grid gap-3 md:grid-cols-2">
-                  <div className="rounded-lg border border-[#132033] bg-[#0b1728] p-4">
-                    <div className="text-xs text-[var(--muted)]">Symbol</div>
-                    <div className="mt-1 text-lg font-semibold">
-                      {quote.symbol ?? normalizedSymbol}
-                    </div>
-                  </div>
-                  <div className="rounded-lg border border-[#132033] bg-[#0b1728] p-4">
-                    <div className="text-xs text-[var(--muted)]">Timestamp</div>
-                    <div className="mt-1 text-sm">
-                      {fmtTime(quote.timestamp)}
-                    </div>
-                  </div>
-                </div>
-                <div className="grid gap-3 md:grid-cols-3">
-                  <div className="rounded-lg border border-[#132033] bg-[#0b1728] p-4">
-                    <div className="text-xs text-[var(--muted)]">Bid</div>
-                    <div className="mt-1 text-lg font-semibold">
-                      {fmtNum(quote.bidPrice)}
-                    </div>
-                    <div className="text-xs text-[var(--muted)]">
-                      Size {fmtNum(quote.bidSize)}
-                    </div>
-                  </div>
-                  <div className="rounded-lg border border-[#132033] bg-[#0b1728] p-4">
-                    <div className="text-xs text-[var(--muted)]">Ask</div>
-                    <div className="mt-1 text-lg font-semibold">
-                      {fmtNum(quote.askPrice)}
-                    </div>
-                    <div className="text-xs text-[var(--muted)]">
-                      Size {fmtNum(quote.askSize)}
-                    </div>
-                  </div>
-                  <div className="rounded-lg border border-[#132033] bg-[#0b1728] p-4">
-                    <div className="text-xs text-[var(--muted)]">Spread</div>
-                    <div className="mt-1 text-lg font-semibold">
-                      {quoteSpread === null ? "-" : fmtNum(quoteSpread)}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="mt-3 text-sm text-[var(--muted)]">
-                No quote loaded.
-              </div>
-            )}
-          </div>
-
-          <div className="rounded-2xl border border-[#132033] bg-[#0f1b2d] p-6">
-            <div className="text-sm font-semibold">Bars</div>
-            {bars.length === 0 ? (
-              <div className="mt-3 text-sm text-[var(--muted)]">
-                No bars loaded.
-              </div>
-            ) : (
-              <>
-                <div className="mt-4 rounded-lg border border-[#132033] bg-[#0b1728] p-4">
-                  <div className="text-xs text-[var(--muted)]">Close trend</div>
-                  <div className="mt-2 h-[90px] w-full">
-                    {sparkPath ? (
-                      <svg viewBox="0 0 100 72" className="h-full w-full">
-                        <defs>
-                          <linearGradient
-                            id="sparkLine"
-                            x1="0"
-                            y1="0"
-                            x2="1"
-                            y2="1"
-                          >
-                            <stop offset="0%" stopColor="#38bdf8" />
-                            <stop offset="100%" stopColor="#22c55e" />
-                          </linearGradient>
-                        </defs>
-                        <path
-                          d={sparkPath}
-                          fill="none"
-                          stroke="url(#sparkLine)"
-                          strokeWidth="2"
-                        />
-                      </svg>
-                    ) : (
-                      <div className="text-xs text-[var(--muted)]">
-                        Not enough data for a chart.
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="mt-4 max-h-[360px] overflow-auto rounded-lg border border-[#132033]">
-                  <table className="min-w-full text-sm">
-                    <thead className="bg-[#0b1728] text-left text-xs text-[var(--muted)]">
-                      <tr>
-                        <th className="px-4 py-3">Time</th>
-                        <th className="px-4 py-3">Open</th>
-                        <th className="px-4 py-3">High</th>
-                        <th className="px-4 py-3">Low</th>
-                        <th className="px-4 py-3">Close</th>
-                        <th className="px-4 py-3">Volume</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#132033]">
-                      {bars.map((b, idx) => (
-                        <tr key={idx}>
-                          <td className="px-4 py-3">{fmtTime(b.timestamp)}</td>
-                          <td className="px-4 py-3">{fmtNum(b.open)}</td>
-                          <td className="px-4 py-3">{fmtNum(b.high)}</td>
-                          <td className="px-4 py-3">{fmtNum(b.low)}</td>
-                          <td className="px-4 py-3">{fmtNum(b.close)}</td>
-                          <td className="px-4 py-3">{fmtNum(b.volume)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-
         <div className="rounded-2xl border border-[#132033] bg-[#0f1b2d] p-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <div className="text-sm font-semibold">Snapshot</div>
+              <div className="text-sm font-semibold">Watchlist</div>
               <div className="mt-1 text-xs text-[var(--muted)]">
-                Quick view for multiple symbols.
+                Pick one symbol to display in the chart.
               </div>
             </div>
-            <div className="flex flex-wrap gap-3">
-              <input
-                className="min-w-[260px] rounded-lg border border-[#1f2e44] bg-[#0b1728] px-3 py-2 text-sm text-white"
-                value={pollSymbols}
-                onChange={(e) => setPollSymbols(e.target.value)}
-                placeholder="AAPL,MSFT,NVDA"
-              />
-              <button
-                disabled={
-                  loading || !userId || normalizedPollSymbols.length === 0
-                }
-                className="rounded-lg bg-[#1f6feb] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-                onClick={() => void onSnapshot()}
-              >
-                {loading ? "Loading..." : "Load snapshot"}
-              </button>
-            </div>
-          </div>
-
-          {snapshot ? (
-            <>
-              <div className="mt-4 grid gap-4 md:grid-cols-3">
-                <div className="rounded-xl border border-[#132033] bg-[#0b1728] p-4">
-                  <div className="text-xs text-[var(--muted)]">Quotes</div>
-                  <div className="mt-2 text-2xl font-semibold">
-                    {(snapshot.quotes ?? []).length}
-                  </div>
-                </div>
-                <div className="rounded-xl border border-[#132033] bg-[#0b1728] p-4">
-                  <div className="text-xs text-[var(--muted)]">
-                    Latest trades
-                  </div>
-                  <div className="mt-2 text-2xl font-semibold">
-                    {(snapshot.latestTrades ?? []).length}
-                  </div>
-                </div>
-                <div className="rounded-xl border border-[#132033] bg-[#0b1728] p-4">
-                  <div className="text-xs text-[var(--muted)]">Latest bars</div>
-                  <div className="mt-2 text-2xl font-semibold">
-                    {(snapshot.latestBars ?? []).length}
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-5 grid gap-4 md:grid-cols-3">
-                <div className="rounded-lg border border-[#132033] bg-[#0b1728] p-4">
-                  <div className="text-xs text-[var(--muted)]">Quotes</div>
-                  {(snapshot.quotes ?? []).length === 0 ? (
-                    <div className="mt-2 text-xs text-[var(--muted)]">
-                      No quotes in snapshot.
-                    </div>
-                  ) : (
-                    <div className="mt-3 max-h-[200px] overflow-auto">
-                      <table className="min-w-full text-xs">
-                        <thead className="text-left text-[var(--muted)]">
-                          <tr>
-                            <th className="py-1 pr-2">Symbol</th>
-                            <th className="py-1 pr-2">Bid</th>
-                            <th className="py-1 pr-2">Ask</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-[#132033]">
-                          {(snapshot.quotes ?? []).slice(0, 8).map((q, idx) => (
-                            <tr key={`${q.symbol ?? "sym"}-${idx}`}>
-                              <td className="py-1 pr-2 font-semibold">
-                                {q.symbol ?? "-"}
-                              </td>
-                              <td className="py-1 pr-2">
-                                {fmtNum(q.bidPrice)}
-                              </td>
-                              <td className="py-1 pr-2">
-                                {fmtNum(q.askPrice)}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-
-                <div className="rounded-lg border border-[#132033] bg-[#0b1728] p-4">
-                  <div className="text-xs text-[var(--muted)]">
-                    Latest trades
-                  </div>
-                  {(snapshot.latestTrades ?? []).length === 0 ? (
-                    <div className="mt-2 text-xs text-[var(--muted)]">
-                      No trades in snapshot.
-                    </div>
-                  ) : (
-                    <div className="mt-3 max-h-[200px] overflow-auto">
-                      <table className="min-w-full text-xs">
-                        <thead className="text-left text-[var(--muted)]">
-                          <tr>
-                            <th className="py-1 pr-2">Symbol</th>
-                            <th className="py-1 pr-2">Price</th>
-                            <th className="py-1 pr-2">Size</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-[#132033]">
-                          {(snapshot.latestTrades ?? [])
-                            .slice(0, 8)
-                            .map((t, idx) => (
-                              <tr key={`${t.symbol ?? "sym"}-${idx}`}>
-                                <td className="py-1 pr-2 font-semibold">
-                                  {t.symbol ?? "-"}
-                                </td>
-                                <td className="py-1 pr-2">{fmtNum(t.price)}</td>
-                                <td className="py-1 pr-2">{fmtNum(t.size)}</td>
-                              </tr>
-                            ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-
-                <div className="rounded-lg border border-[#132033] bg-[#0b1728] p-4">
-                  <div className="text-xs text-[var(--muted)]">Latest bars</div>
-                  {(snapshot.latestBars ?? []).length === 0 ? (
-                    <div className="mt-2 text-xs text-[var(--muted)]">
-                      No bars in snapshot.
-                    </div>
-                  ) : (
-                    <div className="mt-3 max-h-[200px] overflow-auto">
-                      <table className="min-w-full text-xs">
-                        <thead className="text-left text-[var(--muted)]">
-                          <tr>
-                            <th className="py-1 pr-2">Symbol</th>
-                            <th className="py-1 pr-2">Close</th>
-                            <th className="py-1 pr-2">Vol</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-[#132033]">
-                          {(snapshot.latestBars ?? [])
-                            .slice(0, 8)
-                            .map((b, idx) => (
-                              <tr key={`${b.symbol ?? "sym"}-${idx}`}>
-                                <td className="py-1 pr-2 font-semibold">
-                                  {b.symbol ?? "-"}
-                                </td>
-                                <td className="py-1 pr-2">{fmtNum(b.close)}</td>
-                                <td className="py-1 pr-2">
-                                  {fmtNum(b.volume)}
-                                </td>
-                              </tr>
-                            ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </>
-          ) : (
-            <div className="mt-3 text-sm text-[var(--muted)]">
-              No snapshot loaded.
-            </div>
-          )}
-        </div>
-
-        <div className="rounded-2xl border border-[#132033] bg-[#0f1b2d] p-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <div className="text-sm font-semibold">Polling</div>
-              <div className="mt-1 text-xs text-[var(--muted)]">
-                Keep polling a watchlist of symbols.
-              </div>
-            </div>
-            <div
-              className={
-                polling
-                  ? "rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-200"
-                  : "rounded-full border border-[#1f2e44] bg-[#0b1728] px-3 py-1 text-xs text-[var(--muted)]"
-              }
+            <button
+              className="rounded-lg border border-[#1f2e44] px-3 py-2 text-xs text-white disabled:opacity-60"
+              onClick={() => void refreshWatchlist()}
+              disabled={loadingLatest || !userId}
             >
-              {polling ? "Running" : "Stopped"}
-            </div>
+              {loadingLatest ? "Refreshing..." : "Refresh latest"}
+            </button>
           </div>
 
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <input
               className="min-w-[260px] rounded-lg border border-[#1f2e44] bg-[#0b1728] px-3 py-2 text-sm text-white"
-              value={pollSymbols}
-              onChange={(e) => setPollSymbols(e.target.value)}
+              value={symbolsInput}
+              onChange={(e) => setSymbolsInput(e.target.value)}
               placeholder="AAPL,MSFT,NVDA"
             />
-            <input
-              type="number"
-              className="w-28 rounded-lg border border-[#1f2e44] bg-[#0b1728] px-3 py-2 text-sm text-white"
-              min={1}
-              max={60}
-              value={pollInterval}
-              onChange={(e) => setPollInterval(Number(e.target.value))}
-            />
             <button
-              disabled={
-                loading || !userId || normalizedPollSymbols.length === 0
-              }
-              className="rounded-lg bg-[#1f6feb] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-              onClick={() => void onStartPolling()}
+              onClick={onApplyWatchlist}
+              className="rounded-lg bg-[#1f6feb] px-4 py-2 text-sm font-semibold text-white"
             >
-              Start
-            </button>
-            <button
-              disabled={loading || !userId || !polling}
-              className="rounded-lg border border-[#1f2e44] px-4 py-2 text-sm text-white disabled:opacity-60"
-              onClick={() => void onStopPolling()}
-            >
-              Stop
-            </button>
-            <button
-              disabled={
-                loading || !userId || normalizedPollSymbols.length === 0
-              }
-              className="rounded-lg border border-[#1f2e44] px-4 py-2 text-sm text-white disabled:opacity-60"
-              onClick={() => void onAddSymbols()}
-            >
-              Add symbols
-            </button>
-            <button
-              disabled={
-                loading || !userId || normalizedPollSymbols.length === 0
-              }
-              className="rounded-lg border border-[#1f2e44] px-4 py-2 text-sm text-white disabled:opacity-60"
-              onClick={() => void onRemoveSymbols()}
-            >
-              Remove symbols
-            </button>
-            <button
-              disabled={loading || !userId}
-              className="rounded-lg border border-[#1f2e44] px-4 py-2 text-sm text-white disabled:opacity-60"
-              onClick={() => void onFetchPolled()}
-            >
-              Fetch polled quotes
+              Apply watchlist
             </button>
           </div>
 
-          {polledQuotes.length > 0 ? (
-            <>
-              <div className="mt-3 text-xs text-[var(--muted)]">
-                Last update: {fmtTime(polledQuotes[0]?.timestamp)}
+          <div className="mt-4 flex flex-wrap gap-2">
+            {symbols.map((symbol) => {
+              const latest = latestBars[symbol];
+              return (
+                <div
+                  key={symbol}
+                  className={
+                    activeSymbol === symbol
+                      ? "flex items-center gap-2 rounded-full border border-[#1f6feb]/60 bg-[#1f6feb]/20 px-3 py-1 text-xs text-white"
+                      : "flex items-center gap-2 rounded-full border border-[#1f2e44] bg-[#0b1728] px-3 py-1 text-xs text-white"
+                  }
+                >
+                  <button
+                    className="font-semibold"
+                    onClick={() => setActiveSymbol(symbol)}
+                  >
+                    {symbol}
+                  </button>
+                  <span className="text-[var(--muted)]">
+                    {latest?.close !== undefined ? fmtNum(latest.close, 2) : "-"}
+                  </span>
+                  <button
+                    className="text-[var(--muted)] hover:text-white"
+                    onClick={() => onRemoveSymbol(symbol)}
+                    title="Remove symbol"
+                  >
+                    ✕
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-[#132033] bg-[#0f1b2d] p-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <div className="text-sm font-semibold">Chart settings</div>
+              <div className="mt-1 text-xs text-[var(--muted)]">
+                Customize selection and chart style.
               </div>
-              <div className="mt-3 max-h-[300px] overflow-auto rounded-lg border border-[#132033]">
-                <table className="min-w-full text-sm">
-                  <thead className="bg-[#0b1728] text-left text-xs text-[var(--muted)]">
-                    <tr>
-                      <th className="px-4 py-3">Symbol</th>
-                      <th className="px-4 py-3">Bid</th>
-                      <th className="px-4 py-3">Ask</th>
-                      <th className="px-4 py-3">Time</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#132033]">
-                    {polledQuotes.map((q, idx) => (
-                      <tr key={`${q.symbol ?? "sym"}-${idx}`}>
-                        <td className="px-4 py-3 font-medium">
-                          {q.symbol ?? "-"}
-                        </td>
-                        <td className="px-4 py-3">{fmtNum(q.bidPrice)}</td>
-                        <td className="px-4 py-3">{fmtNum(q.askPrice)}</td>
-                        <td className="px-4 py-3">{fmtTime(q.timestamp)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          ) : (
-            <div className="mt-3 text-sm text-[var(--muted)]">
-              No polled quotes loaded.
             </div>
-          )}
+            <button
+              onClick={() => setRequestKey((k) => k + 1)}
+              disabled={loading || !userId || !activeSymbol}
+              className="rounded-lg bg-[#1f6feb] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+            >
+              {loading ? "Loading..." : "Load chart"}
+            </button>
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+              Timeframe
+            </label>
+            <select
+              className="rounded-lg border border-[#1f2e44] bg-[#0b1728] px-3 py-2 text-sm text-white"
+              value={timeframe}
+              onChange={(e) => setTimeframe(e.target.value as Timeframe)}
+            >
+              {timeframeOptions.map((tf) => (
+                <option key={tf} value={tf}>
+                  {tf}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+              Period
+            </label>
+            <div className="flex overflow-hidden rounded-lg border border-[#1f2e44]">
+              {(["1W", "1M", "3M", "6M", "1Y", "YTD", "ALL"] as DatePreset[]).map((preset) => (
+                <button
+                  key={preset}
+                  className={
+                    datePreset === preset
+                      ? "bg-[#1f6feb] px-3 py-2 text-xs font-semibold text-white"
+                      : "px-3 py-2 text-xs text-white hover:bg-[#1f2e44]"
+                  }
+                  onClick={() => setDatePreset(preset)}
+                >
+                  {preset}
+                </button>
+              ))}
+            </div>
+            {isLoadingMore && (
+              <span className="text-xs text-[var(--muted)]">Loading more...</span>
+            )}
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-4 text-sm">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={showCandles}
+                onChange={(e) => setShowCandles(e.target.checked)}
+              />
+              Candles
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={showLine}
+                onChange={(e) => setShowLine(e.target.checked)}
+              />
+              Line
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={showVolume}
+                onChange={(e) => setShowVolume(e.target.checked)}
+              />
+              Volume
+            </label>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-[#132033] bg-[#0f1b2d] p-6">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="text-sm font-semibold">
+                {activeSymbol || "Chart"}
+              </div>
+              <div className="mt-1 text-xs text-[var(--muted)]">
+                Hover to inspect a specific bar.
+              </div>
+            </div>
+            <div className="rounded-lg border border-[#132033] bg-[#0b1728] px-3 py-2 text-xs text-[var(--muted)]">
+              {hover?.time ? `Hover ${fmtTime(hover.time)}` : "Latest bar"}
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-5">
+            <div className="rounded-lg border border-[#132033] bg-[#0b1728] p-3">
+              <div className="text-[10px] uppercase text-[var(--muted)]">
+                Open
+              </div>
+              <div className="mt-1 text-sm font-semibold">
+                {fmtNum(hover?.open ?? lastBar?.open, 2)}
+              </div>
+            </div>
+            <div className="rounded-lg border border-[#132033] bg-[#0b1728] p-3">
+              <div className="text-[10px] uppercase text-[var(--muted)]">
+                High
+              </div>
+              <div className="mt-1 text-sm font-semibold">
+                {fmtNum(hover?.high ?? lastBar?.high, 2)}
+              </div>
+            </div>
+            <div className="rounded-lg border border-[#132033] bg-[#0b1728] p-3">
+              <div className="text-[10px] uppercase text-[var(--muted)]">
+                Low
+              </div>
+              <div className="mt-1 text-sm font-semibold">
+                {fmtNum(hover?.low ?? lastBar?.low, 2)}
+              </div>
+            </div>
+            <div className="rounded-lg border border-[#132033] bg-[#0b1728] p-3">
+              <div className="text-[10px] uppercase text-[var(--muted)]">
+                Close
+              </div>
+              <div className="mt-1 text-sm font-semibold">
+                {fmtNum(hover?.close ?? lastBar?.close, 2)}
+              </div>
+            </div>
+            <div className="rounded-lg border border-[#132033] bg-[#0b1728] p-3">
+              <div className="text-[10px] uppercase text-[var(--muted)]">
+                Volume
+              </div>
+              <div className="mt-1 text-sm font-semibold">
+                {fmtNum(hover?.volume ?? lastBar?.volume, 0)}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-[#132033] bg-[#0b1728] p-3">
+            {bars.length === 0 ? (
+              <div className="text-sm text-[var(--muted)]">
+                No bars loaded yet.
+              </div>
+            ) : (
+              <StockChart
+                bars={bars}
+                showCandles={showCandles}
+                showLine={showLine}
+                showVolume={showVolume}
+                resetKey={chartResetKey}
+                timeframe={timeframe}
+                onHover={setHover}
+                onScrollNearStart={onScrollNearStart}
+              />
+            )}
+          </div>
         </div>
       </div>
     </div>
