@@ -398,6 +398,8 @@ export default function OrdersPage() {
       return;
     }
 
+    setSelectedOrderDetail(null);
+    setSelectedOrderHistory([]);
     setSelectedOrderId(oid);
     setDetailLoading(true);
     setError(null);
