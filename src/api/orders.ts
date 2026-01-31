@@ -67,3 +67,19 @@ export async function getOrderHistory(userId: number, orderId: string) {
     `/api/v1/orders/${userId}/${orderId}/history`,
   );
 }
+
+export type FilledOrder = {
+  symbol: string;
+  quantity: number;
+  side: "BUY" | "SELL";
+  filledAt: string;
+};
+
+export async function getFilledOrdersByStrategy(
+  userId: number,
+  userStrategyId: number,
+) {
+  return api.get<FilledOrder[]>(
+    `/api/v1/orders/${userId}/strategy/${userStrategyId}/filled`,
+  );
+}

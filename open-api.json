@@ -1,0 +1,3374 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "pBorsa API",
+    "description": "Trading support API (accounts, credentials, strategies, data streaming)",
+    "contact": {
+      "name": "pBorsa Team"
+    },
+    "version": "v1"
+  },
+  "externalDocs": {
+    "description": "Swagger UI",
+    "url": "/swagger-ui/index.html"
+  },
+  "servers": [
+    {
+      "url": "http://34.2.54.3",
+      "description": "Generated server url"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Orders",
+      "description": "Order query endpoints"
+    },
+    {
+      "name": "Base Strategies",
+      "description": "Strategy catalog endpoints (read-only)"
+    },
+    {
+      "name": "Bar Data",
+      "description": "OHLCV bar data for charts"
+    },
+    {
+      "name": "Credentials",
+      "description": "Manage Alpaca API credentials for users"
+    },
+    {
+      "name": "Admin",
+      "description": "Admin-only endpoints for user management and data access"
+    },
+    {
+      "name": "User Strategies",
+      "description": "User strategy subscription management"
+    },
+    {
+      "name": "Account",
+      "description": "Account balances, cash, buying power, and positions"
+    },
+    {
+      "name": "Order History",
+      "description": "Order history query endpoints"
+    },
+    {
+      "name": "Users",
+      "description": "User profile endpoints"
+    }
+  ],
+  "paths": {
+    "/api/v1/admin/users/{targetUserId}/admin": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Get admin status",
+        "description": "Gets the admin status for a target user. Requires admin privileges.",
+        "operationId": "getAdminStatus",
+        "parameters": [
+          {
+            "name": "targetUserId",
+            "in": "path",
+            "description": "Target user ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Admin status retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminStatusApiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden - Admin privileges required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Set admin status",
+        "description": "Sets the admin status for a target user. Requires admin privileges.",
+        "operationId": "setAdminStatus",
+        "parameters": [
+          {
+            "name": "targetUserId",
+            "in": "path",
+            "description": "Target user ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetAdminRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Admin status updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminStatusApiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden - Admin privileges required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/users/{userId}/strategies": {
+      "get": {
+        "tags": [
+          "User Strategies"
+        ],
+        "summary": "List user strategies",
+        "description": "Gets all strategy subscriptions for a user.",
+        "operationId": "getUserStrategies",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "description": "User ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "User strategies retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserStrategyListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "User Strategies"
+        ],
+        "summary": "Create user strategy",
+        "description": "Subscribes to a base strategy with a specific stock.",
+        "operationId": "createUserStrategy",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "description": "User ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateUserStrategyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseUserStrategyDto"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "User strategy created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserStrategyResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/users/{userId}/strategies/{strategyId}/activate": {
+      "post": {
+        "tags": [
+          "User Strategies"
+        ],
+        "summary": "Activate user strategy",
+        "description": "Activates a strategy, starting data transfer to the trading engine. Strategy must be in CREATED status. Status will be PREPARING until data transfer completes.",
+        "operationId": "activateStrategy",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "description": "User ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "strategyId",
+            "in": "path",
+            "description": "Strategy ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Strategy activated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserStrategyResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid state (strategy not in CREATED status)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Strategy not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/credentials/{userId}": {
+      "post": {
+        "tags": [
+          "Credentials"
+        ],
+        "summary": "Register credentials",
+        "description": "Creates or updates Alpaca API keys for the user",
+        "operationId": "registerCredentials",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CredentialsRegistrationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseBoolean"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Credentials"
+        ],
+        "summary": "Deactivate credentials",
+        "description": "Soft-deactivates stored keys for the user",
+        "operationId": "deactivateCredentials",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseVoid"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/credentials/{userId}/refresh": {
+      "post": {
+        "tags": [
+          "Credentials"
+        ],
+        "summary": "Refresh credentials cache",
+        "description": "Reloads cached credentials from storage",
+        "operationId": "refreshCredentials",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseVoid"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/users/{targetUserId}/revoke": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Revoke admin privileges",
+        "description": "Revokes admin privileges from a target user. Requires admin privileges.",
+        "operationId": "revokeAdmin",
+        "parameters": [
+          {
+            "name": "targetUserId",
+            "in": "path",
+            "description": "Target user ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Admin privileges revoked successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminStatusApiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden - Admin privileges required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/users/{targetUserId}/grant": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Grant admin privileges",
+        "description": "Grants admin privileges to a target user. Requires admin privileges.",
+        "operationId": "grantAdmin",
+        "parameters": [
+          {
+            "name": "targetUserId",
+            "in": "path",
+            "description": "Target user ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Admin privileges granted successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminStatusApiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden - Admin privileges required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/account/{userId}/refresh": {
+      "post": {
+        "tags": [
+          "Account"
+        ],
+        "summary": "Refresh account info",
+        "description": "Forces a fetch from Alpaca and updates cache",
+        "operationId": "refreshAccountInfo",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseAccountInfoDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/users/{userId}/strategies/{strategyId}": {
+      "get": {
+        "tags": [
+          "User Strategies"
+        ],
+        "summary": "Get user strategy",
+        "description": "Gets a specific strategy subscription by ID.",
+        "operationId": "getUserStrategy",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "description": "User ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "strategyId",
+            "in": "path",
+            "description": "Strategy ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "User strategy retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserStrategyResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Strategy not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "User Strategies"
+        ],
+        "summary": "Delete user strategy",
+        "description": "Removes a strategy subscription.",
+        "operationId": "deleteUserStrategy",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "description": "User ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "strategyId",
+            "in": "path",
+            "description": "Strategy ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "User strategy deleted successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Strategy not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "User Strategies"
+        ],
+        "summary": "Update user strategy",
+        "description": "Updates a strategy subscription (name or status).",
+        "operationId": "updateUserStrategy",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "description": "User ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "strategyId",
+            "in": "path",
+            "description": "Strategy ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUserStrategyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "User strategy updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserStrategyResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Strategy not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/users/{userId}/strategies/{strategyId}/pnl": {
+      "get": {
+        "tags": [
+          "User Strategies"
+        ],
+        "summary": "Get strategy P/L",
+        "description": "Gets profit/loss data for a strategy including realized P/L (closed positions), unrealized P/L (current market value vs cost basis), and position details.",
+        "operationId": "getStrategyPnL",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "description": "User ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "strategyId",
+            "in": "path",
+            "description": "Strategy ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "P/L data retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Strategy not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/users/me": {
+      "get": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "Get current user",
+        "description": "Returns the authenticated user profile",
+        "operationId": "getCurrentUser",
+        "responses": {
+          "200": {
+            "description": "Authenticated user profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserProfileResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/strategies": {
+      "get": {
+        "tags": [
+          "Base Strategies"
+        ],
+        "summary": "List base strategies",
+        "description": "Gets all available base strategy templates from the catalog.",
+        "operationId": "getAllStrategies",
+        "responses": {
+          "200": {
+            "description": "Base strategies retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BaseStrategyListResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/strategies/{code}": {
+      "get": {
+        "tags": [
+          "Base Strategies"
+        ],
+        "summary": "Get base strategy by code",
+        "description": "Gets a specific base strategy template by its code.",
+        "operationId": "getStrategyByCode",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "description": "Strategy code (e.g., MOMENTUM_V1)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Base strategy retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BaseStrategyResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Strategy not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/orders/{userId}/{orderId}": {
+      "get": {
+        "tags": [
+          "Orders"
+        ],
+        "summary": "Get order by ID",
+        "description": "Gets order details by order ID. Regular users can only access their own orders; admins can access any user's orders.",
+        "operationId": "getOrderDetail",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "description": "User ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "orderId",
+            "in": "path",
+            "description": "Order ID (UUID)",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Order retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderDetailResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Order not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/orders/{userId}/{orderId}/history": {
+      "get": {
+        "tags": [
+          "Order History"
+        ],
+        "summary": "Get order history",
+        "description": "Gets the history of status changes for an order. Regular users can only access their own order history; admins can access any user's order history.",
+        "operationId": "getOrderHistory",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "description": "User ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "orderId",
+            "in": "path",
+            "description": "Order ID (UUID)",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Order history retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderHistoryListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/orders/{userId}/strategy/{userStrategyId}": {
+      "get": {
+        "tags": [
+          "Orders"
+        ],
+        "summary": "Get orders by user strategy",
+        "description": "Gets all orders for a specific user strategy. Regular users can only access their own orders; admins can access any user's orders.",
+        "operationId": "getOrdersByUserStrategy",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "description": "User ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "userStrategyId",
+            "in": "path",
+            "description": "User Strategy ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Orders retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderDetailListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/orders/{userId}/history/{historyId}": {
+      "get": {
+        "tags": [
+          "Order History"
+        ],
+        "summary": "Get order history entry",
+        "description": "Gets a specific order history entry by ID. Regular users can only access their own order history; admins can access any user's order history.",
+        "operationId": "getOrderHistoryEntry",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "description": "User ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "historyId",
+            "in": "path",
+            "description": "History entry ID (UUID)",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Order history entry retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderHistoryResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Order history entry not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/credentials/{userId}/status": {
+      "get": {
+        "tags": [
+          "Credentials"
+        ],
+        "summary": "Check credentials status",
+        "description": "Returns true if credentials are present and active",
+        "operationId": "hasCredentials",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseBoolean"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bars/{userId}/{symbol}/latest": {
+      "get": {
+        "tags": [
+          "Bar Data"
+        ],
+        "summary": "Get latest bar for polling updates",
+        "description": "Fetches the most recent bar for a symbol. Use this for polling updates (e.g., every 30-60 seconds). The timeframe should match the chart's timeframe.",
+        "operationId": "getLatestBar",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "description": "User ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "example": 1
+          },
+          {
+            "name": "symbol",
+            "in": "path",
+            "description": "Stock symbol",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "AAPL"
+          },
+          {
+            "name": "timeframe",
+            "in": "query",
+            "description": "Timeframe: 1Min, 5Min, 15Min, 30Min, 1Hour, 4Hour, 1Day, 1Week",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "1Min"
+            },
+            "example": "1Min"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Latest bar retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StockBarResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bars/{userId}/{symbol}/historical": {
+      "get": {
+        "tags": [
+          "Bar Data"
+        ],
+        "summary": "Get historical bars for chart",
+        "description": "Fetches historical OHLCV bars for a symbol. Use this for initial chart load. Bars are sorted by timestamp ascending.",
+        "operationId": "getHistoricalBars",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "description": "User ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "example": 1
+          },
+          {
+            "name": "symbol",
+            "in": "path",
+            "description": "Stock symbol",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "AAPL"
+          },
+          {
+            "name": "timeframe",
+            "in": "query",
+            "description": "Timeframe: 1Min, 5Min, 15Min, 30Min, 1Hour, 4Hour, 1Day, 1Week",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "5Min"
+            },
+            "example": "5Min"
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "description": "Start time in ISO-8601 format",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "example": "2024-01-01T00:00:00Z"
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "description": "End time in ISO-8601 format",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "example": "2024-01-31T23:59:59Z"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum bars to return (default: 500)",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "example": 500
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Historical bars retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StockBarListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bars/{userId}/{symbol}/chart": {
+      "get": {
+        "tags": [
+          "Bar Data"
+        ],
+        "summary": "Get bars for chart display",
+        "description": "Fetches a specific number of bars optimized for chart display. Automatically calculates the appropriate time range based on the requested count.",
+        "operationId": "getBarsForChart",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "description": "User ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "example": 1
+          },
+          {
+            "name": "symbol",
+            "in": "path",
+            "description": "Stock symbol",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "AAPL"
+          },
+          {
+            "name": "timeframe",
+            "in": "query",
+            "description": "Timeframe: 1Min, 5Min, 15Min, 30Min, 1Hour, 4Hour, 1Day, 1Week",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "5Min"
+            },
+            "example": "5Min"
+          },
+          {
+            "name": "count",
+            "in": "query",
+            "description": "Number of bars to return for the chart",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 200
+            },
+            "example": 200
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Chart bars retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StockBarListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bars/{userId}/latest": {
+      "get": {
+        "tags": [
+          "Bar Data"
+        ],
+        "summary": "Get latest bars for multiple symbols",
+        "description": "Fetches the latest bar for multiple symbols in a single request. Use this for dashboard widgets showing multiple assets.",
+        "operationId": "getLatestBars",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "description": "User ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "example": 1
+          },
+          {
+            "name": "symbols",
+            "in": "query",
+            "description": "Comma-separated list of symbols",
+            "required": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            },
+            "example": "AAPL,GOOGL,MSFT"
+          },
+          {
+            "name": "timeframe",
+            "in": "query",
+            "description": "Timeframe: 1Min, 5Min, 15Min, 30Min, 1Hour, 4Hour, 1Day, 1Week",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "1Min"
+            },
+            "example": "1Min"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Latest bars retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StockBarMapResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bars/config": {
+      "get": {
+        "tags": [
+          "Bar Data"
+        ],
+        "summary": "Get bar data configuration",
+        "description": "Returns the available configuration settings for bar data including supported timeframes, default values, and limits. Use this to populate UI dropdowns.",
+        "operationId": "getConfig",
+        "responses": {
+          "200": {
+            "description": "Configuration retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BarDataConfigResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/orders/{orderId}": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Get order by ID (Admin)",
+        "description": "Gets order details by order ID without user ownership validation. Requires admin privileges.",
+        "operationId": "getOrder",
+        "parameters": [
+          {
+            "name": "orderId",
+            "in": "path",
+            "description": "Order ID (UUID)",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Order details retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderDetailResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden - Admin privileges required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Order not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/orders/{orderId}/history": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Get order history (Admin)",
+        "description": "Gets order history for an order without user ownership validation. Requires admin privileges.",
+        "operationId": "getOrderHistory_1",
+        "parameters": [
+          {
+            "name": "orderId",
+            "in": "path",
+            "description": "Order ID (UUID)",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Order history retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderHistoryListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden - Admin privileges required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/history/{historyId}": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Get order history entry (Admin)",
+        "description": "Gets a specific order history entry by ID without user ownership validation. Requires admin privileges.",
+        "operationId": "getOrderHistoryEntry_1",
+        "parameters": [
+          {
+            "name": "historyId",
+            "in": "path",
+            "description": "History entry ID (UUID)",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Order history entry retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderHistoryResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden - Admin privileges required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Order history entry not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/account/{userId}": {
+      "get": {
+        "tags": [
+          "Account"
+        ],
+        "summary": "Get account info",
+        "description": "Returns Alpaca account state for the given user",
+        "operationId": "getAccountInfo",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseAccountInfoDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/account/{userId}/unrealized-pnl": {
+      "get": {
+        "tags": [
+          "Account"
+        ],
+        "summary": "Get unrealized PnL",
+        "description": "Returns total unrealized profit/loss",
+        "operationId": "getUnrealizedPnL",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseBigDecimal"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/account/{userId}/positions": {
+      "get": {
+        "tags": [
+          "Account"
+        ],
+        "summary": "Get positions",
+        "description": "Returns all open positions for the user",
+        "operationId": "getPositions",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseListPositionDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/account/{userId}/positions/{symbol}": {
+      "get": {
+        "tags": [
+          "Account"
+        ],
+        "summary": "Get single position",
+        "description": "Returns position for the symbol if it exists",
+        "operationId": "getPosition",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "symbol",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponsePositionDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/account/{userId}/portfolio-value": {
+      "get": {
+        "tags": [
+          "Account"
+        ],
+        "summary": "Get portfolio value",
+        "description": "Returns total portfolio market value",
+        "operationId": "getPortfolioValue",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseBigDecimal"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/account/{userId}/equity": {
+      "get": {
+        "tags": [
+          "Account"
+        ],
+        "summary": "Get equity",
+        "description": "Returns account equity value",
+        "operationId": "getEquity",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseBigDecimal"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/account/{userId}/cash": {
+      "get": {
+        "tags": [
+          "Account"
+        ],
+        "summary": "Get cash balance",
+        "description": "Returns cash on the account",
+        "operationId": "getCashBalance",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseBigDecimal"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/account/{userId}/can-trade": {
+      "get": {
+        "tags": [
+          "Account"
+        ],
+        "summary": "Check trade permission",
+        "description": "Returns true if account can currently trade",
+        "operationId": "canTrade",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseBoolean"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/account/{userId}/buying-power": {
+      "get": {
+        "tags": [
+          "Account"
+        ],
+        "summary": "Get buying power",
+        "description": "Returns current buying power for the user",
+        "operationId": "getBuyingPower",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseBigDecimal"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "SetAdminRequest": {
+        "type": "object",
+        "properties": {
+          "admin": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "admin"
+        ]
+      },
+      "CreateUserStrategyRequest": {
+        "type": "object",
+        "properties": {
+          "baseStrategyCode": {
+            "type": "string",
+            "minLength": 1
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 0
+          },
+          "symbol": {
+            "type": "string",
+            "maxLength": 16,
+            "minLength": 0
+          },
+          "budget": {
+            "type": "number",
+            "minimum": 0.01
+          }
+        },
+        "required": [
+          "baseStrategyCode",
+          "budget",
+          "name",
+          "symbol"
+        ]
+      },
+      "ApiResponseUserStrategyDto": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "$ref": "#/components/schemas/UserStrategyDto"
+          },
+          "message": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "BaseStrategyDto": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "UserStrategyDto": {
+        "description": "List of user strategies",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          },
+          "baseStrategy": {
+            "$ref": "#/components/schemas/BaseStrategyDto"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "budget": {
+            "type": "number"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "CredentialsRegistrationRequest": {
+        "type": "object",
+        "properties": {
+          "apiKey": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 10
+          },
+          "secretKey": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 10
+          },
+          "paperTrading": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "apiKey",
+          "secretKey"
+        ]
+      },
+      "ApiResponseBoolean": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ApiResponseVoid": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+
+          },
+          "message": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "AccountInfoDto": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "accountNumber": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ACTIVE",
+              "ONBOARDING",
+              "SUBMISSION_FAILED",
+              "SUBMITTED",
+              "ACTION_REQUIRED",
+              "ACCOUNT_UPDATED",
+              "DISABLED",
+              "APPROVAL_PENDING"
+            ]
+          },
+          "currency": {
+            "type": "string"
+          },
+          "cash": {
+            "type": "number"
+          },
+          "portfolioValue": {
+            "type": "number"
+          },
+          "buyingPower": {
+            "type": "number"
+          },
+          "equity": {
+            "type": "number"
+          },
+          "lastEquity": {
+            "type": "number"
+          },
+          "longMarketValue": {
+            "type": "number"
+          },
+          "shortMarketValue": {
+            "type": "number"
+          },
+          "initialMargin": {
+            "type": "number"
+          },
+          "maintenanceMargin": {
+            "type": "number"
+          },
+          "lastMaintenanceMargin": {
+            "type": "number"
+          },
+          "daytradeCount": {
+            "type": "number"
+          },
+          "patternDayTrader": {
+            "type": "boolean"
+          },
+          "tradingBlocked": {
+            "type": "boolean"
+          },
+          "transfersBlocked": {
+            "type": "boolean"
+          },
+          "accountBlocked": {
+            "type": "boolean"
+          },
+          "tradeSuspendedByUser": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ApiResponseAccountInfoDto": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "$ref": "#/components/schemas/AccountInfoDto"
+          },
+          "message": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "UpdateUserStrategyRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 0
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiResponseBigDecimal": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "type": "number"
+          },
+          "message": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ApiResponseListPositionDto": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PositionDto"
+            }
+          },
+          "message": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PositionDto": {
+        "type": "object",
+        "properties": {
+          "assetId": {
+            "type": "string"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "exchange": {
+            "type": "string"
+          },
+          "assetClass": {
+            "type": "string"
+          },
+          "averageEntryPrice": {
+            "type": "number"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "side": {
+            "type": "string"
+          },
+          "marketValue": {
+            "type": "number"
+          },
+          "costBasis": {
+            "type": "number"
+          },
+          "unrealizedPnL": {
+            "type": "number"
+          },
+          "unrealizedPnLPercent": {
+            "type": "number"
+          },
+          "unrealizedIntradayPnL": {
+            "type": "number"
+          },
+          "unrealizedIntradayPnLPercent": {
+            "type": "number"
+          },
+          "currentPrice": {
+            "type": "number"
+          },
+          "lastDayPrice": {
+            "type": "number"
+          },
+          "changeToday": {
+            "type": "number"
+          },
+          "short": {
+            "type": "boolean"
+          },
+          "long": {
+            "type": "boolean"
+          },
+          "profitable": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ApiResponsePositionDto": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "$ref": "#/components/schemas/PositionDto"
+          },
+          "message": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "UserProfileResponse": {
+        "description": "ApiResponse wrapper for the current user profile",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Indicates whether the request succeeded",
+            "example": true
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Response timestamp in UTC"
+          },
+          "data": {
+            "$ref": "#/components/schemas/UserProfileDto"
+          },
+          "message": {
+            "type": "string",
+            "description": "Optional message",
+            "example": "OK"
+          }
+        }
+      },
+      "UserProfileDto": {
+        "description": "User profile payload",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "firebaseUid": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ACTIVE",
+              "DISABLED",
+              "DELETED"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ApiErrorResponse": {
+        "description": "ApiResponse wrapper for an error response",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Indicates whether the request succeeded",
+            "example": false
+          },
+          "error": {
+            "type": "string",
+            "description": "Error code",
+            "example": "UNAUTHORIZED"
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable message",
+            "example": "Unauthorized"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Response timestamp in UTC"
+          }
+        }
+      },
+      "ApiSuccessResponseBase": {
+        "description": "Common ApiResponse fields for successful responses",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Indicates whether the request succeeded",
+            "example": true
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Response timestamp in UTC"
+          }
+        }
+      },
+      "ApiErrorResponseBase": {
+        "description": "Common ApiResponse fields for error responses",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Indicates whether the request succeeded",
+            "example": false
+          },
+          "error": {
+            "type": "string",
+            "description": "Error code",
+            "example": "UNAUTHORIZED"
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable message",
+            "example": "Unauthorized"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Response timestamp in UTC"
+          }
+        }
+      },
+      "AdminStatusApiResponse": {
+        "description": "ApiResponse wrapper for admin status",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Indicates whether the request succeeded",
+            "example": true
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Response timestamp in UTC"
+          },
+          "data": {
+            "$ref": "#/components/schemas/AdminStatusResponse"
+          },
+          "message": {
+            "type": "string",
+            "description": "Optional message",
+            "example": "OK"
+          }
+        }
+      },
+      "AdminStatusResponse": {
+        "description": "Admin status payload",
+        "properties": {
+          "userId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "admin": {
+            "type": "boolean"
+          }
+        }
+      },
+      "OrderDetailResponse": {
+        "description": "ApiResponse wrapper for order details",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Indicates whether the request succeeded",
+            "example": true
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Response timestamp in UTC"
+          },
+          "data": {
+            "$ref": "#/components/schemas/OrderDetailDto"
+          },
+          "message": {
+            "type": "string",
+            "description": "Optional message",
+            "example": "OK"
+          }
+        }
+      },
+      "OrderDetailDto": {
+        "description": "List of order details",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "orderId": {
+            "type": "string"
+          },
+          "clientOrderId": {
+            "type": "string"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "filledQuantity": {
+            "type": "number"
+          },
+          "side": {
+            "type": "string",
+            "enum": [
+              "BUY",
+              "SELL"
+            ]
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "MARKET",
+              "LIMIT",
+              "STOP",
+              "STOP_LIMIT",
+              "TRAILING_STOP"
+            ]
+          },
+          "timeInForce": {
+            "type": "string",
+            "enum": [
+              "DAY",
+              "GTC",
+              "OPG",
+              "CLS",
+              "IOC",
+              "FOK"
+            ]
+          },
+          "limitPrice": {
+            "type": "number"
+          },
+          "stopPrice": {
+            "type": "number"
+          },
+          "filledAveragePrice": {
+            "type": "number"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ACCEPTED_BY_APP",
+              "NEW",
+              "PARTIALLY_FILLED",
+              "FILLED",
+              "DONE_FOR_DAY",
+              "CANCELED",
+              "CANCEL_REQUESTED",
+              "EXPIRED",
+              "REPLACED",
+              "PENDING_CANCEL",
+              "PENDING_REPLACE",
+              "REJECTED",
+              "PENDING_NEW",
+              "ACCEPTED",
+              "ACCEPTED_FOR_BIDDING",
+              "STOPPED",
+              "SUSPENDED",
+              "CALCULATED",
+              "HELD"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "extendedHours": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "submittedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "filledAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expiredAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cancelledAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "assetClass": {
+            "type": "string"
+          },
+          "userStrategyId": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "OrderDetailListResponse": {
+        "description": "ApiResponse wrapper for a list of order details",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Indicates whether the request succeeded",
+            "example": true
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Response timestamp in UTC"
+          },
+          "data": {
+            "type": "array",
+            "description": "List of order details",
+            "items": {
+              "$ref": "#/components/schemas/OrderDetailDto"
+            }
+          },
+          "message": {
+            "type": "string",
+            "description": "Optional message",
+            "example": "OK"
+          }
+        }
+      },
+      "OrderHistoryResponse": {
+        "description": "ApiResponse wrapper for a single order history entry",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Indicates whether the request succeeded",
+            "example": true
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Response timestamp in UTC"
+          },
+          "data": {
+            "$ref": "#/components/schemas/OrderHistoryDto"
+          },
+          "message": {
+            "type": "string",
+            "description": "Optional message",
+            "example": "OK"
+          }
+        }
+      },
+      "OrderHistoryDto": {
+        "description": "List of order history entries",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "orderId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ACCEPTED_BY_APP",
+              "NEW",
+              "PARTIALLY_FILLED",
+              "FILLED",
+              "DONE_FOR_DAY",
+              "CANCELED",
+              "CANCEL_REQUESTED",
+              "EXPIRED",
+              "REPLACED",
+              "PENDING_CANCEL",
+              "PENDING_REPLACE",
+              "REJECTED",
+              "PENDING_NEW",
+              "ACCEPTED",
+              "ACCEPTED_FOR_BIDDING",
+              "STOPPED",
+              "SUSPENDED",
+              "CALCULATED",
+              "HELD"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "INSUFFICIENT_FUNDS",
+              "RATE_LIMIT",
+              "INVALID_ORDER",
+              "MARKET_CLOSED",
+              "AUTH_ERROR",
+              "UNKNOWN"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "OrderHistoryListResponse": {
+        "description": "ApiResponse wrapper for a list of order history entries",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Indicates whether the request succeeded",
+            "example": true
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Response timestamp in UTC"
+          },
+          "data": {
+            "type": "array",
+            "description": "List of order history entries",
+            "items": {
+              "$ref": "#/components/schemas/OrderHistoryDto"
+            }
+          },
+          "message": {
+            "type": "string",
+            "description": "Optional message",
+            "example": "OK"
+          }
+        }
+      },
+      "BaseStrategyResponse": {
+        "description": "ApiResponse wrapper for a single base strategy",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Indicates whether the request succeeded",
+            "example": true
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Response timestamp in UTC"
+          },
+          "data": {
+            "$ref": "#/components/schemas/BaseStrategyDto"
+          },
+          "message": {
+            "type": "string",
+            "description": "Optional message",
+            "example": "OK"
+          }
+        }
+      },
+      "BaseStrategyListResponse": {
+        "description": "ApiResponse wrapper for a list of base strategies",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Indicates whether the request succeeded",
+            "example": true
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Response timestamp in UTC"
+          },
+          "data": {
+            "type": "array",
+            "description": "List of base strategies",
+            "items": {
+              "$ref": "#/components/schemas/BaseStrategyDto"
+            }
+          },
+          "message": {
+            "type": "string",
+            "description": "Optional message",
+            "example": "OK"
+          }
+        }
+      },
+      "UserStrategyResponse": {
+        "description": "ApiResponse wrapper for a single user strategy",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Indicates whether the request succeeded",
+            "example": true
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Response timestamp in UTC"
+          },
+          "data": {
+            "$ref": "#/components/schemas/UserStrategyDto"
+          },
+          "message": {
+            "type": "string",
+            "description": "Optional message",
+            "example": "OK"
+          }
+        }
+      },
+      "UserStrategyListResponse": {
+        "description": "ApiResponse wrapper for a list of user strategies",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Indicates whether the request succeeded",
+            "example": true
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Response timestamp in UTC"
+          },
+          "data": {
+            "type": "array",
+            "description": "List of user strategies",
+            "items": {
+              "$ref": "#/components/schemas/UserStrategyDto"
+            }
+          },
+          "message": {
+            "type": "string",
+            "description": "Optional message",
+            "example": "OK"
+          }
+        }
+      },
+      "StockBarMapResponse": {
+        "description": "ApiResponse wrapper for a map of symbol to stock bar",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Indicates whether the request succeeded",
+            "example": true
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Response timestamp in UTC"
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/StockBarDto"
+            },
+            "description": "Map of symbol to latest OHLCV bar"
+          },
+          "message": {
+            "type": "string",
+            "description": "Optional message",
+            "example": "OK"
+          }
+        }
+      },
+      "StockBarDto": {
+        "description": "OHLCV bar data",
+        "properties": {
+          "symbol": {
+            "type": "string"
+          },
+          "open": {
+            "type": "number"
+          },
+          "high": {
+            "type": "number"
+          },
+          "low": {
+            "type": "number"
+          },
+          "close": {
+            "type": "number"
+          },
+          "volume": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "tradeCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "vwap": {
+            "type": "number"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "bullish": {
+            "type": "boolean"
+          },
+          "bearish": {
+            "type": "boolean"
+          }
+        }
+      },
+      "StockBarListResponse": {
+        "description": "ApiResponse wrapper for a list of stock bars",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Indicates whether the request succeeded",
+            "example": true
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Response timestamp in UTC"
+          },
+          "data": {
+            "type": "array",
+            "description": "List of OHLCV bars",
+            "items": {
+              "$ref": "#/components/schemas/StockBarDto"
+            }
+          },
+          "message": {
+            "type": "string",
+            "description": "Optional message",
+            "example": "OK"
+          }
+        }
+      },
+      "StockBarResponse": {
+        "description": "ApiResponse wrapper for a single stock bar",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Indicates whether the request succeeded",
+            "example": true
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Response timestamp in UTC"
+          },
+          "data": {
+            "$ref": "#/components/schemas/StockBarDto"
+          },
+          "message": {
+            "type": "string",
+            "description": "Optional message",
+            "example": "OK"
+          }
+        }
+      },
+      "BarDataConfigResponse": {
+        "description": "ApiResponse wrapper for bar data configuration",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Indicates whether the request succeeded",
+            "example": true
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Response timestamp in UTC"
+          },
+          "data": {
+            "$ref": "#/components/schemas/BarDataConfig"
+          },
+          "message": {
+            "type": "string",
+            "description": "Optional message",
+            "example": "OK"
+          }
+        }
+      },
+      "BarDataConfig": {
+        "description": "Bar data configuration settings",
+        "properties": {
+          "supportedTimeframes": {
+            "type": "array",
+            "description": "List of supported timeframes",
+            "example": [
+              "1Min",
+              "5Min",
+              "15Min",
+              "30Min",
+              "1Hour",
+              "4Hour",
+              "1Day",
+              "1Week"
+            ],
+            "items": {
+              "type": "string",
+              "description": "List of supported timeframes",
+              "example": "[\"1Min\",\"5Min\",\"15Min\",\"30Min\",\"1Hour\",\"4Hour\",\"1Day\",\"1Week\"]"
+            }
+          },
+          "defaultTimeframe": {
+            "type": "string",
+            "description": "Default timeframe",
+            "example": "5Min"
+          },
+          "defaultBarsLimit": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Default number of bars to return",
+            "example": 500
+          },
+          "maxBarsPerRequest": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Maximum bars allowed per request",
+            "example": 5000
+          },
+          "updateIntervalSeconds": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Update interval for live streaming in seconds",
+            "example": 30
+          }
+        }
+      }
+    }
+  }
+}
