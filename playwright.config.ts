@@ -5,8 +5,6 @@ export default defineConfig({
   testDir: './e2e/tests',
   // Folder for test artifacts such as screenshots, videos, traces, etc.
   outputDir: 'e2e/test-results',
-
-  timeout: 10000,
   workers:undefined, // auto count
 
   use: {
@@ -21,6 +19,7 @@ export default defineConfig({
   webServer: {
     command: 'npm run dev',
     url: 'http://localhost:5173',
-    reuseExistingServer: true // if port already used
+    reuseExistingServer: true, // if port already used
+    timeout: 120000, // Give it 120 seconds. Increase/decrease depending on your dev server speed.
   },
 });
