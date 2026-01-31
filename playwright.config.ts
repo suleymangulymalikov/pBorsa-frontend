@@ -5,21 +5,28 @@ export default defineConfig({
   testDir: './e2e/tests',
   // Folder for test artifacts such as screenshots, videos, traces, etc.
   outputDir: 'e2e/test-results',
-  workers:undefined, // auto count
-
+  workers: process.env.CI ? 1 : undefined, // Opt out of parallel tests on CI
+  fullyParallel: true,
+  timeout: process.env.NODE_ENV === 'production' ? 40000 : 220000,
+  expect: {
+    timeout: process.env.NODE_ENV === 'production' ? 40000 : 220000,
+  },
+  retries: process.env.CI ? 2 : 0, // retry in CI only
   use: {
     baseURL: 'http://localhost:5173',
     browserName: 'chromium',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
+    trace: 'on-first-retry',
     headless: true,
+    actionTimeout: 0
   },
 
   // Run your local dev server before starting the tests.
   webServer: {
     command: 'npm run dev',
     url: 'http://localhost:5173',
-    reuseExistingServer: true, // if port already used
-    timeout: 120000, // Give it 120 seconds. Increase/decrease depending on your dev server speed.
+    reuseExistingServer: false, // if port already used or for CI
+    timeout: 60000, // wait max 60s for server to boot
   },
 });

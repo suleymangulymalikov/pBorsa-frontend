@@ -11,4 +11,5 @@ jobs:
           cache: npm
       - run: npm ci # clean install
       - run: npx playwright install --with-deps
-      - run: npm run e2e:test
+      - name: Run E2E tests
+        run: npm run e2e:test
