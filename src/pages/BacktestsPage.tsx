@@ -1,12 +1,13 @@
 
 import { onAuthStateChanged } from "firebase/auth";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { auth } from "../lib/firebase";
 import { api } from "../api/client";
 import Modal from "../components/Modal";
 import StockChart, { type ChartMarker } from "../components/StockChart";
 import {
   getHistoricalBars,
+  getChunkSizeForTimeframe,
   type StockBar,
   type Timeframe,
 } from "../api/barData";
@@ -107,6 +108,24 @@ function sanitizeBars(bars: StockBar[]) {
     });
 }
 
+function filterBarsToRange(
+  bars: StockBar[],
+  start?: string,
+  end?: string,
+): StockBar[] {
+  if (!start && !end) return bars;
+  const startMs = start ? new Date(start).getTime() : null;
+  const endMs = end ? new Date(end).getTime() : null;
+  return bars.filter((b) => {
+    if (!b.timestamp) return false;
+    const t = new Date(b.timestamp).getTime();
+    if (Number.isNaN(t)) return false;
+    if (startMs !== null && t < startMs) return false;
+    if (endMs !== null && t > endMs) return false;
+    return true;
+  });
+}
+
 function BacktestBadge({ text }: { text: string }) {
   const status = String(text ?? "-");
   const cls =
@@ -150,6 +169,10 @@ export default function BacktestsPage() {
   const [loading, setLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [chartLoading, setChartLoading] = useState(false);
+  const [earliestLoadedDate, setEarliestLoadedDate] = useState<string | null>(null);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMoreHistory, setHasMoreHistory] = useState(true);
+  const loadMoreTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -233,13 +256,6 @@ export default function BacktestsPage() {
       .filter(Boolean) as ChartMarker[];
   }, [orders, selectedBacktest?.symbol]);
 
-  const chartBounds = useMemo(() => {
-    return {
-      min: selectedBacktest?.testingStart ?? undefined,
-      max: selectedBacktest?.testingEnd ?? undefined,
-    };
-  }, [selectedBacktest?.testingStart, selectedBacktest?.testingEnd]);
-
   async function loadBaseAndBacktests(uid: number) {
     setError(null);
 
@@ -305,16 +321,27 @@ export default function BacktestsPage() {
         selectedBacktest.symbol,
         chartTimeframe,
         {
-          start: selectedBacktest.testingStart,
           end: selectedBacktest.testingEnd,
+          limit: 500,
         },
       );
-      const cleanedBars = sanitizeBars(Array.isArray(bars) ? bars : []);
+      const cleanedBars = filterBarsToRange(
+        sanitizeBars(Array.isArray(bars) ? bars : []),
+        selectedBacktest.testingStart,
+        selectedBacktest.testingEnd,
+      );
       setChartBars(cleanedBars);
       setChartResetKey((k) => k + 1);
+      if (cleanedBars.length > 0 && cleanedBars[0].timestamp) {
+        setEarliestLoadedDate(cleanedBars[0].timestamp);
+      } else {
+        setEarliestLoadedDate(null);
+      }
+      setHasMoreHistory(true);
     } catch (e) {
       console.error("Failed to load chart data:", e);
       setChartBars([]);
+      setEarliestLoadedDate(null);
     } finally {
       setChartLoading(false);
     }
@@ -325,6 +352,92 @@ export default function BacktestsPage() {
     selectedBacktest?.testingEnd,
     chartTimeframe,
   ]);
+
+  const loadMoreHistory = useCallback(async () => {
+    if (!userId || !selectedBacktest?.symbol || !earliestLoadedDate) return;
+    if (!selectedBacktest.testingStart || !selectedBacktest.testingEnd) return;
+    if (isLoadingMore || !hasMoreHistory) return;
+
+    setIsLoadingMore(true);
+
+    try {
+      const earliestDate = new Date(earliestLoadedDate);
+      const endDate = new Date(earliestDate.getTime() - 1000);
+      const chunkDays = getChunkSizeForTimeframe(chartTimeframe);
+      const startDate = new Date(
+        endDate.getTime() - chunkDays * 24 * 60 * 60 * 1000,
+      );
+
+      const minStart = new Date(selectedBacktest.testingStart);
+      const boundedStart = startDate < minStart ? minStart : startDate;
+
+      if (endDate <= minStart) {
+        setHasMoreHistory(false);
+        return;
+      }
+
+      const data = await getHistoricalBars(
+        userId,
+        selectedBacktest.symbol,
+        chartTimeframe,
+        {
+          start: boundedStart.toISOString(),
+          end: endDate.toISOString(),
+          limit: 5000,
+        },
+      );
+
+      const newBars = filterBarsToRange(
+        sanitizeBars(Array.isArray(data) ? data : []),
+        selectedBacktest.testingStart,
+        selectedBacktest.testingEnd,
+      );
+
+      if (newBars.length === 0) {
+        setHasMoreHistory(false);
+        return;
+      }
+
+      setChartBars((prev) => {
+        const existingTimestamps = new Set(prev.map((b) => b.timestamp));
+        const uniqueNewBars = newBars.filter(
+          (b) => !existingTimestamps.has(b.timestamp),
+        );
+        return [...uniqueNewBars, ...prev];
+      });
+
+      if (newBars.length > 0 && newBars[0].timestamp) {
+        setEarliestLoadedDate(newBars[0].timestamp);
+      }
+
+      if (boundedStart.getTime() === minStart.getTime()) {
+        setHasMoreHistory(false);
+      }
+    } catch (e) {
+      console.error("Failed to load more history:", e);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [
+    userId,
+    selectedBacktest?.symbol,
+    selectedBacktest?.testingStart,
+    selectedBacktest?.testingEnd,
+    earliestLoadedDate,
+    isLoadingMore,
+    hasMoreHistory,
+    chartTimeframe,
+  ]);
+
+  const onScrollNearStart = useCallback(() => {
+    if (loadMoreTimeoutRef.current) return;
+    loadMoreTimeoutRef.current = setTimeout(() => {
+      loadMoreTimeoutRef.current = null;
+      if (!isLoadingMore) {
+        void loadMoreHistory();
+      }
+    }, 300);
+  }, [isLoadingMore, loadMoreHistory]);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
@@ -373,6 +486,7 @@ export default function BacktestsPage() {
       void loadChartData();
     } else {
       setChartBars([]);
+      setEarliestLoadedDate(null);
     }
   }, [
     selectedBacktest?.symbol,
@@ -1116,6 +1230,11 @@ export default function BacktestsPage() {
               >
                 {chartLoading ? "Loading..." : "Refresh"}
               </button>
+              {isLoadingMore && (
+                <span className="text-xs text-[var(--muted)]">
+                  Loading more...
+                </span>
+              )}
             </div>
           </div>
 
@@ -1172,9 +1291,7 @@ export default function BacktestsPage() {
                 timeframe={chartTimeframe}
                 markers={chartMarkers}
                 height={300}
-                minTime={chartBounds.min}
-                maxTime={chartBounds.max}
-                lockVisibleRange
+                onScrollNearStart={onScrollNearStart}
               />
             )}
           </div>
