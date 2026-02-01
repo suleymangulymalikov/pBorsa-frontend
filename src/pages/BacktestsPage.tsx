@@ -912,7 +912,9 @@ export default function BacktestsPage() {
                     const status = String(b.status ?? "-");
                     const canStart = status === "CREATED";
                     const canDelete =
-                      status === "CREATED" || status === "COMPLETED";
+                      status === "CREATED" ||
+                      status === "COMPLETED" ||
+                      status === "FAILED";
                     const isSelected = selectedBacktestId === b.id;
                     const winRate = formatWinRate(
                       b.totalTrades ?? null,
