@@ -7,6 +7,8 @@ export default defineConfig({
   outputDir: 'e2e/test-results',
   workers: process.env.CI ? 1 : undefined, // Opt out of parallel tests on CI
   fullyParallel: true,
+  /* Fail the suite with first failed test */
+  maxFailures: process.env.CI ? 1 : 0,
   timeout: process.env.NODE_ENV === 'production' ? 40000 : 220000,
   expect: {
     timeout: process.env.NODE_ENV === 'production' ? 40000 : 220000,
