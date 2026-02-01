@@ -3,6 +3,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { auth } from "../lib/firebase";
 import { api } from "../api/client";
+import BalanceChart, { type BalancePoint } from "../components/BalanceChart";
 import Modal from "../components/Modal";
 import StockChart, { type ChartMarker } from "../components/StockChart";
 import StockSelect from "../components/StockSelect";
@@ -18,9 +19,11 @@ import {
   createBacktest,
   deleteBacktest,
   getBacktest,
+  getBacktestBalanceTimeline,
   getBacktests,
   startBacktest,
   type Backtest,
+  type BacktestBalancePoint,
   type BacktestOrder,
 } from "../api/backtests";
 
@@ -128,6 +131,28 @@ function filterBarsToRange(
   });
 }
 
+function sanitizeBalanceTimeline(points: BacktestBalancePoint[]): BalancePoint[] {
+  return [...points]
+    .map((p) => {
+      if (!p?.timestamp) return null;
+      const ts = String(p.timestamp);
+      const t = new Date(ts).getTime();
+      if (Number.isNaN(t)) return null;
+      const rawBalance = p.balance;
+      const balance =
+        typeof rawBalance === "string" ? Number(rawBalance) : rawBalance;
+      if (balance === null || balance === undefined || Number.isNaN(balance)) {
+        return null;
+      }
+      return { timestamp: ts, balance: Number(balance) };
+    })
+    .filter(Boolean)
+    .sort(
+      (a, b) =>
+        new Date(a!.timestamp).getTime() - new Date(b!.timestamp).getTime(),
+    ) as BalancePoint[];
+}
+
 function BacktestBadge({ text }: { text: string }) {
   const status = String(text ?? "-");
   const cls =
@@ -194,6 +219,9 @@ export default function BacktestsPage() {
   const [showCandles, setShowCandles] = useState(true);
   const [showLine, setShowLine] = useState(false);
   const [showVolume, setShowVolume] = useState(true);
+  const [balanceTimeline, setBalanceTimeline] = useState<BalancePoint[]>([]);
+  const [balanceLoading, setBalanceLoading] = useState(false);
+  const [balanceResetKey, setBalanceResetKey] = useState(0);
 
   const { stocks, loading: stocksLoading, error: stocksError } = useStocks();
 
@@ -260,6 +288,19 @@ export default function BacktestsPage() {
       .filter(Boolean) as ChartMarker[];
   }, [orders, selectedBacktest?.symbol]);
 
+  const balanceRange = useMemo(() => {
+    const start =
+      selectedBacktest?.testingStart ?? balanceTimeline[0]?.timestamp;
+    const end =
+      selectedBacktest?.testingEnd ??
+      balanceTimeline[balanceTimeline.length - 1]?.timestamp;
+    return { start, end };
+  }, [
+    balanceTimeline,
+    selectedBacktest?.testingStart,
+    selectedBacktest?.testingEnd,
+  ]);
+
   async function loadBaseAndBacktests(uid: number) {
     setError(null);
 
@@ -307,6 +348,7 @@ export default function BacktestsPage() {
         setError(errorMessage);
         setSelectedBacktest(null);
         setOrders([]);
+        setBalanceTimeline([]);
       } finally {
         setDetailLoading(false);
       }
@@ -356,6 +398,27 @@ export default function BacktestsPage() {
     selectedBacktest?.testingEnd,
     chartTimeframe,
   ]);
+
+  const loadBalanceTimeline = useCallback(async () => {
+    if (!userId || selectedBacktestId === "") return;
+    setBalanceLoading(true);
+    try {
+      const data = await getBacktestBalanceTimeline(
+        userId,
+        selectedBacktestId as number,
+      );
+      const cleaned = sanitizeBalanceTimeline(
+        Array.isArray(data) ? data : [],
+      );
+      setBalanceTimeline(cleaned);
+      setBalanceResetKey((k) => k + 1);
+    } catch (e) {
+      console.error("Failed to load balance timeline:", e);
+      setBalanceTimeline([]);
+    } finally {
+      setBalanceLoading(false);
+    }
+  }, [userId, selectedBacktestId]);
 
   const loadMoreHistory = useCallback(async () => {
     if (!userId || !selectedBacktest?.symbol || !earliestLoadedDate) return;
@@ -479,11 +542,18 @@ export default function BacktestsPage() {
       void loadBacktestsOnly(userId);
       if (selectedBacktestId !== "") {
         void loadBacktestDetail(userId, selectedBacktestId as number);
+        void loadBalanceTimeline();
       }
     }, 3000);
 
     return () => clearInterval(t);
-  }, [userId, hasRunning, selectedBacktestId, loadBacktestDetail]);
+  }, [
+    userId,
+    hasRunning,
+    selectedBacktestId,
+    loadBacktestDetail,
+    loadBalanceTimeline,
+  ]);
 
   useEffect(() => {
     if (selectedBacktest?.symbol) {
@@ -499,6 +569,14 @@ export default function BacktestsPage() {
     chartTimeframe,
     loadChartData,
   ]);
+
+  useEffect(() => {
+    if (!userId || selectedBacktestId === "") {
+      setBalanceTimeline([]);
+      return;
+    }
+    void loadBalanceTimeline();
+  }, [userId, selectedBacktestId, loadBalanceTimeline]);
 
   const onCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -595,6 +673,7 @@ export default function BacktestsPage() {
         setSelectedBacktest(null);
         setOrders([]);
         setChartBars([]);
+        setBalanceTimeline([]);
       }
     } catch (e: any) {
       const errorMessage =
@@ -1332,6 +1411,53 @@ export default function BacktestsPage() {
               </div>
             </div>
           )}
+        </div>
+
+        <div className="rounded-2xl border border-[#132033] bg-[#0f1b2d] p-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <div className="text-sm font-semibold">Balance Timeline</div>
+              <div className="mt-1 text-xs text-[var(--muted)]">
+                {selectedBacktestId === ""
+                  ? "Select a backtest to view balance timeline"
+                  : "Balance updates at BUY/SELL events within the backtest range"}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                className="rounded-lg border border-[#1f2e44] px-3 py-2 text-xs text-white disabled:opacity-60"
+                onClick={() => void loadBalanceTimeline()}
+                disabled={balanceLoading || selectedBacktestId === ""}
+              >
+                {balanceLoading ? "Loading..." : "Refresh"}
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-[#132033] bg-[#0b1728] p-3">
+            {selectedBacktestId === "" ? (
+              <div className="flex h-[260px] items-center justify-center text-sm text-[var(--muted)]">
+                Select a backtest to view balance timeline
+              </div>
+            ) : balanceLoading ? (
+              <div className="flex h-[260px] items-center justify-center text-sm text-[var(--muted)]">
+                Loading balance timeline...
+              </div>
+            ) : balanceTimeline.length === 0 ? (
+              <div className="flex h-[260px] items-center justify-center text-sm text-[var(--muted)]">
+                No balance data available
+              </div>
+            ) : (
+              <BalanceChart
+                points={balanceTimeline}
+                height={260}
+                resetKey={balanceResetKey}
+                minTime={balanceRange.start}
+                maxTime={balanceRange.end}
+                lockVisibleRange
+              />
+            )}
+          </div>
         </div>
       </div>
     </div>

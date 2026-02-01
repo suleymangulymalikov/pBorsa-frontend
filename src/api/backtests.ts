@@ -22,6 +22,12 @@ export type BacktestOrder = {
   [key: string]: unknown;
 };
 
+export type BacktestBalancePoint = {
+  timestamp?: string;
+  balance?: number | string;
+  [key: string]: unknown;
+};
+
 export type Backtest = {
   id: number;
   name?: string;
@@ -59,6 +65,15 @@ export async function getBacktests(userId: number) {
 
 export async function getBacktest(userId: number, backtestId: number) {
   return api.get<Backtest>(`/api/v1/users/${userId}/backtests/${backtestId}`);
+}
+
+export async function getBacktestBalanceTimeline(
+  userId: number,
+  backtestId: number,
+) {
+  return api.get<BacktestBalancePoint[]>(
+    `/api/v1/users/${userId}/backtests/${backtestId}/balance-timeline`,
+  );
 }
 
 export async function createBacktest(
