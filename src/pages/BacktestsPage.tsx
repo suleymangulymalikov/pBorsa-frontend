@@ -182,6 +182,9 @@ function BacktestBadge({ text }: { text: string }) {
   );
 }
 
+const ORDER_ROW_HEIGHT = 44;
+const ORDER_OVERSCAN = 6;
+
 export default function BacktestsPage() {
   const [me, setMe] = useState<MeResponse | null>(null);
   const userId = me?.id ?? null;
@@ -197,6 +200,9 @@ export default function BacktestsPage() {
   );
   const [orders, setOrders] = useState<BacktestOrder[]>([]);
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
+  const ordersContainerRef = useRef<HTMLDivElement | null>(null);
+  const [ordersScrollTop, setOrdersScrollTop] = useState(0);
+  const [ordersViewportHeight, setOrdersViewportHeight] = useState(0);
 
   const [loading, setLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -273,6 +279,28 @@ export default function BacktestsPage() {
     const sellCount = orders.filter((o) => o.side === "SELL").length;
     return { total, buyCount, sellCount };
   }, [orders]);
+
+  const ordersWindow = useMemo(() => {
+    const total = sortedOrders.length;
+    const safeHeight = Math.max(ordersViewportHeight, ORDER_ROW_HEIGHT);
+    const baseStart = Math.floor(ordersScrollTop / ORDER_ROW_HEIGHT);
+    const startIndex = Math.max(0, baseStart - ORDER_OVERSCAN);
+    const visibleCount =
+      Math.ceil(safeHeight / ORDER_ROW_HEIGHT) + ORDER_OVERSCAN * 2;
+    const endIndex = Math.min(total, startIndex + visibleCount);
+    return {
+      total,
+      startIndex,
+      endIndex,
+      topPad: startIndex * ORDER_ROW_HEIGHT,
+      bottomPad: Math.max(0, total - endIndex) * ORDER_ROW_HEIGHT,
+      visibleOrders: sortedOrders.slice(startIndex, endIndex),
+    };
+  }, [
+    sortedOrders,
+    ordersScrollTop,
+    ordersViewportHeight,
+  ]);
 
   const chartMarkers = useMemo((): ChartMarker[] => {
     if (!selectedBacktest?.symbol) return [];
@@ -582,6 +610,34 @@ export default function BacktestsPage() {
     }
     void loadBalanceTimeline();
   }, [userId, selectedBacktestId, loadBalanceTimeline]);
+
+  useEffect(() => {
+    const el = ordersContainerRef.current;
+    if (!el) return;
+    const updateHeight = () => setOrdersViewportHeight(el.clientHeight);
+    updateHeight();
+    if (typeof ResizeObserver !== "undefined") {
+      const observer = new ResizeObserver(updateHeight);
+      observer.observe(el);
+      return () => observer.disconnect();
+    }
+    window.addEventListener("resize", updateHeight);
+    return () => window.removeEventListener("resize", updateHeight);
+  }, [detailLoading, orders.length, selectedBacktestId]);
+
+  useEffect(() => {
+    setOrdersScrollTop(0);
+    if (ordersContainerRef.current) {
+      ordersContainerRef.current.scrollTop = 0;
+    }
+  }, [selectedBacktestId]);
+
+  const onOrdersScroll = useCallback(
+    (event: React.UIEvent<HTMLDivElement>) => {
+      setOrdersScrollTop(event.currentTarget.scrollTop);
+    },
+    [],
+  );
 
   const onCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1051,50 +1107,79 @@ export default function BacktestsPage() {
               No orders for this backtest yet.
             </div>
           ) : (
-            <div className="mt-4 max-h-[420px] overflow-auto rounded-lg border border-[#132033]">
-              <table className="min-w-full text-sm">
-                <thead className="bg-[#0b1728] text-left text-xs text-[var(--muted)]">
-                  <tr>
-                    <th className="px-4 py-3 w-12">#</th>
-                    <th className="px-4 py-3">Symbol</th>
-                    <th className="px-4 py-3">Side</th>
-                    <th className="px-4 py-3">Qty</th>
-                    <th className="px-4 py-3">Price</th>
-                    <th className="px-4 py-3">Executed</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#132033]">
-                  {sortedOrders.map((o, idx) => {
-                    const isSelected = selectedOrderId === o.id;
-                    return (
-                      <tr
-                        key={o.id ?? `row-${idx}`}
-                        className={`transition-colors cursor-pointer ${
-                          isSelected
-                            ? "bg-[#0b1728] border-l-2 border-l-[#1f6feb]"
-                            : "hover:bg-[#0b1728]/50"
-                        }`}
-                        onClick={() => setSelectedOrderId(o.id)}
-                        title="Click to view detail"
-                      >
-                        <td className="px-4 py-3 text-xs text-[var(--muted)]">
-                          {idx + 1}
-                        </td>
-                        <td className="px-4 py-3 font-medium">
-                          {o.symbol ?? "-"}
-                        </td>
-                        <td className="px-4 py-3">{o.side ?? "-"}</td>
-                        <td className="px-4 py-3">{fmtNum(o.quantity)}</td>
-                        <td className="px-4 py-3">{fmtNum(o.price)}</td>
-                        <td className="px-4 py-3">
-                          {fmtTime(o.executedAt ?? o.createdAt)}
-                        </td>
+            <>
+              <div className="mt-2 text-xs text-[var(--muted)]">
+                Showing {ordersWindow.startIndex + 1}-{ordersWindow.endIndex} of{" "}
+                {ordersWindow.total}
+              </div>
+              <div
+                ref={ordersContainerRef}
+                onScroll={onOrdersScroll}
+                className="mt-4 max-h-[420px] overflow-auto rounded-lg border border-[#132033]"
+              >
+                <table className="min-w-full text-sm">
+                  <thead className="bg-[#0b1728] text-left text-xs text-[var(--muted)]">
+                    <tr>
+                      <th className="px-4 py-3 w-12">#</th>
+                      <th className="px-4 py-3">Symbol</th>
+                      <th className="px-4 py-3">Side</th>
+                      <th className="px-4 py-3">Qty</th>
+                      <th className="px-4 py-3">Price</th>
+                      <th className="px-4 py-3">Executed</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#132033]">
+                    {ordersWindow.topPad > 0 && (
+                      <tr aria-hidden="true">
+                        <td
+                          colSpan={6}
+                          className="p-0"
+                          style={{ height: ordersWindow.topPad }}
+                        />
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                    )}
+                    {ordersWindow.visibleOrders.map((o, idx) => {
+                      const rowIndex = ordersWindow.startIndex + idx;
+                      const isSelected = selectedOrderId === o.id;
+                      return (
+                        <tr
+                          key={o.id ?? `row-${rowIndex}`}
+                          className={`transition-colors cursor-pointer ${
+                            isSelected
+                              ? "bg-[#0b1728] border-l-2 border-l-[#1f6feb]"
+                              : "hover:bg-[#0b1728]/50"
+                          }`}
+                          onClick={() => setSelectedOrderId(o.id)}
+                          title="Click to view detail"
+                        >
+                          <td className="px-4 py-3 text-xs text-[var(--muted)]">
+                            {rowIndex + 1}
+                          </td>
+                          <td className="px-4 py-3 font-medium">
+                            {o.symbol ?? "-"}
+                          </td>
+                          <td className="px-4 py-3">{o.side ?? "-"}</td>
+                          <td className="px-4 py-3">{fmtNum(o.quantity)}</td>
+                          <td className="px-4 py-3">{fmtNum(o.price)}</td>
+                          <td className="px-4 py-3">
+                            {fmtTime(o.executedAt ?? o.createdAt)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {ordersWindow.bottomPad > 0 && (
+                      <tr aria-hidden="true">
+                        <td
+                          colSpan={6}
+                          className="p-0"
+                          style={{ height: ordersWindow.bottomPad }}
+                        />
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </div>
 
