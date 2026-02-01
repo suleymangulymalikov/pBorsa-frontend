@@ -575,7 +575,6 @@ export default function BacktestsPage() {
       void loadBacktestsOnly(userId);
       if (selectedBacktestId !== "") {
         void loadBacktestDetail(userId, selectedBacktestId as number);
-        void loadBalanceTimeline();
       }
     }, 3000);
 
