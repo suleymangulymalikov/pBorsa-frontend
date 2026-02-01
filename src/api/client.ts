@@ -32,9 +32,9 @@ function extractErrorMessage(errorText: string): string {
     try {
       const parsed = JSON.parse(trimmed);
 
-      // Check for common error message fields
-      if (typeof parsed.error === "string") return parsed.error;
+      // Check for common error message fields (prefer human-readable message)
       if (typeof parsed.message === "string") return parsed.message;
+      if (typeof parsed.error === "string") return parsed.error;
       if (typeof parsed.detail === "string") return parsed.detail;
 
       // If it's a structured error, return a generic message

@@ -90,7 +90,9 @@ export default function AccountPage() {
     if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
       try {
         const parsed = JSON.parse(trimmed);
+        if (typeof parsed?.message === "string") return parsed.message;
         if (typeof parsed?.error === "string") return parsed.error;
+        if (typeof parsed?.detail === "string") return parsed.detail;
       } catch {
         return trimmed;
       }

@@ -9,6 +9,7 @@ import PositionsPage from "./pages/PositionsPage";
 import MarketDataPage from "./pages/MarketDataPage";
 import OrdersPage from "./pages/OrdersPage";
 import StrategiesPage from "./pages/StrategiesPage";
+import BacktestsPage from "./pages/BacktestsPage";
 import AppLayout from "./layouts/AppLayout";
 
 export default function App() {
@@ -27,6 +28,7 @@ export default function App() {
           <Route path="/market" element={<MarketDataPage />} />
           <Route path="/orders" element={<OrdersPage />} />
           <Route path="/strategies" element={<StrategiesPage />} />
+          <Route path="/backtests" element={<BacktestsPage />} />
         </Route>
       </Route>
 
