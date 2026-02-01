@@ -41,6 +41,9 @@ export type StockChartProps = {
   onScrollNearStart?: () => void;
   markers?: ChartMarker[];
   height?: number;
+  minTime?: string;
+  maxTime?: string;
+  lockVisibleRange?: boolean;
 };
 
 function toUtcTimestamp(value: string): UTCTimestamp | null {
@@ -64,6 +67,9 @@ export default function StockChart({
   onScrollNearStart,
   markers,
   height = 420,
+  minTime,
+  maxTime,
+  lockVisibleRange = false,
 }: StockChartProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -75,10 +81,32 @@ export default function StockChart({
 
   const barMapRef = useRef<Map<number, StockBar>>(new Map());
   const onScrollNearStartRef = useRef(onScrollNearStart);
+  const timeBoundsRef = useRef<{ min?: UTCTimestamp; max?: UTCTimestamp }>({});
 
   useEffect(() => {
     onScrollNearStartRef.current = onScrollNearStart;
   }, [onScrollNearStart]);
+
+  useEffect(() => {
+    const minTs = minTime ? toUtcTimestamp(minTime) : null;
+    const maxTs = maxTime ? toUtcTimestamp(maxTime) : null;
+    timeBoundsRef.current = {
+      min: minTs ?? undefined,
+      max: maxTs ?? undefined,
+    };
+    if (
+      lockVisibleRange &&
+      chartRef.current &&
+      minTs &&
+      maxTs &&
+      minTs < maxTs
+    ) {
+      chartRef.current.timeScale().setVisibleRange({
+        from: minTs,
+        to: maxTs,
+      });
+    }
+  }, [minTime, maxTime, lockVisibleRange]);
 
   useEffect(() => {
     const map = new Map<number, StockBar>();
@@ -203,6 +231,47 @@ export default function StockChart({
       }
     });
 
+    const clampVisibleRange = (range: { from: UTCTimestamp | BusinessDay; to: UTCTimestamp | BusinessDay } | null) => {
+      if (!lockVisibleRange) return;
+      if (!range) return;
+      const min = timeBoundsRef.current.min;
+      const max = timeBoundsRef.current.max;
+      if (!min || !max) return;
+      if (typeof range.from !== "number" || typeof range.to !== "number") return;
+      let from = range.from as UTCTimestamp;
+      let to = range.to as UTCTimestamp;
+      if (min >= max) return;
+
+      const boundsWidth = max - min;
+      const rangeWidth = to - from;
+
+      if (rangeWidth >= boundsWidth) {
+        chart.timeScale().setVisibleRange({ from: min, to: max });
+        return;
+      }
+
+      let changed = false;
+      if (from < min) {
+        const shift = min - from;
+        from = min;
+        to = Math.min(max, (to + shift) as UTCTimestamp);
+        changed = true;
+      }
+
+      if (to > max) {
+        const shift = to - max;
+        to = max;
+        from = Math.max(min, (from - shift) as UTCTimestamp);
+        changed = true;
+      }
+
+      if (changed) {
+        chart.timeScale().setVisibleRange({ from, to });
+      }
+    };
+
+    chart.timeScale().subscribeVisibleTimeRangeChange(clampVisibleRange);
+
     const resizeObserver = new ResizeObserver(() => {
       if (!containerRef.current) return;
       chart.applyOptions({
@@ -215,6 +284,7 @@ export default function StockChart({
 
     return () => {
       resizeObserver.disconnect();
+      chart.timeScale().unsubscribeVisibleTimeRangeChange(clampVisibleRange);
       markersPluginRef.current?.detach();
       chart.remove();
       chartRef.current = null;
@@ -297,8 +367,14 @@ export default function StockChart({
 
   useEffect(() => {
     if (!chartRef.current) return;
+    const min = timeBoundsRef.current.min;
+    const max = timeBoundsRef.current.max;
+    if (lockVisibleRange && min && max && min < max) {
+      chartRef.current.timeScale().setVisibleRange({ from: min, to: max });
+      return;
+    }
     chartRef.current.timeScale().fitContent();
-  }, [resetKey]);
+  }, [resetKey, lockVisibleRange]);
 
   useEffect(() => {
     const markersPlugin = markersPluginRef.current;

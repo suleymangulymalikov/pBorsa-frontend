@@ -53,6 +53,12 @@ export default function AppLayout() {
             >
               Strategies
             </button>
+            <button
+              className={isActive("/backtests") ? "text-white" : undefined}
+              onClick={() => nav("/backtests")}
+            >
+              Backtests
+            </button>
           </nav>
           <div className="relative">
             <details className="group">
