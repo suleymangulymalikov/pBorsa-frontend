@@ -15,6 +15,7 @@ import {
   type Timeframe,
 } from "../api/barData";
 import { getBaseStrategies, type BaseStrategy } from "../api/strategies";
+import { extractErrorMessage } from "../api/errors";
 import {
   createBacktest,
   deleteBacktest,
@@ -212,8 +213,9 @@ export default function BacktestsPage() {
   const [hasMoreHistory, setHasMoreHistory] = useState(true);
   const loadMoreTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const [pageError, setPageError] = useState<string | null>(null);
+  const [pageMessage, setPageMessage] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const [baseCode, setBaseCode] = useState("");
   const [name, setName] = useState("");
@@ -335,7 +337,7 @@ export default function BacktestsPage() {
   ]);
 
   async function loadBaseAndBacktests(uid: number) {
-    setError(null);
+    setPageError(null);
 
     try {
       const [bases, tests] = await Promise.all([
@@ -352,7 +354,7 @@ export default function BacktestsPage() {
     } catch (e: any) {
       const errorMessage =
         e?.message || "Failed to load backtests. Please try again.";
-      setError(errorMessage);
+      setPageError(extractErrorMessage(errorMessage));
     }
   }
 
@@ -368,7 +370,7 @@ export default function BacktestsPage() {
   const loadBacktestDetail = useCallback(
     async (uid: number, backtestId: number) => {
       setDetailLoading(true);
-      setError(null);
+      setPageError(null);
 
       try {
         const data = await getBacktest(uid, backtestId);
@@ -378,7 +380,7 @@ export default function BacktestsPage() {
       } catch (e: any) {
         const errorMessage =
           e?.message || "Failed to load backtest detail. Please try again.";
-        setError(errorMessage);
+        setPageError(extractErrorMessage(errorMessage));
         setSelectedBacktest(null);
         setOrders([]);
         setBalanceTimeline([]);
@@ -548,12 +550,12 @@ export default function BacktestsPage() {
         setMe(meData);
 
         setLoading(true);
-        setMessage(null);
+        setPageMessage(null);
         await loadBaseAndBacktests(meData.id);
       } catch (e: any) {
         const errorMessage =
           e?.message || "Unable to load user information. Please try again.";
-        setError(errorMessage);
+        setPageError(extractErrorMessage(errorMessage));
       } finally {
         setLoading(false);
       }
@@ -575,6 +577,7 @@ export default function BacktestsPage() {
       void loadBacktestsOnly(userId);
       if (selectedBacktestId !== "") {
         void loadBacktestDetail(userId, selectedBacktestId as number);
+        void loadBalanceTimeline();
       }
     }, 3000);
 
@@ -645,31 +648,30 @@ export default function BacktestsPage() {
     const sym = normalizedSymbol;
 
     if (!baseCode || !name.trim() || !sym) {
-      setError("Please select a base strategy, enter a name, and a symbol.");
+      setFormError("Please select a base strategy, enter a name, and a symbol.");
       return;
     }
 
     if (!budget || Number.isNaN(Number(budget)) || Number(budget) <= 0) {
-      setError("Budget must be greater than 0.");
+      setFormError("Budget must be greater than 0.");
       return;
     }
 
     if (!testingStart || !testingEnd) {
-      setError("Please select a testing start and end date.");
+      setFormError("Please select a testing start and end date.");
       return;
     }
 
     const startIso = new Date(testingStart).toISOString();
     const endIso = new Date(testingEnd).toISOString();
-
     if (new Date(startIso).getTime() >= new Date(endIso).getTime()) {
-      setError("Testing start must be before testing end.");
+      setFormError("Testing start must be before testing end."); //
       return;
     }
 
     setLoading(true);
-    setError(null);
-    setMessage(null);
+    setFormError(null);
+    setPageMessage(null);
 
     try {
       await createBacktest(userId, {
@@ -681,14 +683,14 @@ export default function BacktestsPage() {
         testingEnd: endIso,
       });
 
-      setMessage("Backtest created.");
+      setPageMessage("Backtest created.");
       setName("");
       setShowCreateModal(false);
       await loadBaseAndBacktests(userId);
     } catch (e: any) {
       const errorMessage =
         e?.message || "Failed to create backtest. Please try again.";
-      setError(errorMessage);
+      setPageError(extractErrorMessage(errorMessage));
     } finally {
       setLoading(false);
     }
@@ -698,12 +700,12 @@ export default function BacktestsPage() {
     if (!userId) return;
 
     setLoading(true);
-    setError(null);
-    setMessage(null);
+    setPageError(null);
+    setPageMessage(null);
 
     try {
       await startBacktest(userId, id);
-      setMessage("Backtest started.");
+      setPageMessage("Backtest started.");
       await loadBacktestsOnly(userId);
       if (selectedBacktestId === id) {
         await loadBacktestDetail(userId, id);
@@ -711,7 +713,7 @@ export default function BacktestsPage() {
     } catch (e: any) {
       const errorMessage =
         e?.message || "Failed to start backtest. Please try again.";
-      setError(errorMessage);
+      setPageError(extractErrorMessage(errorMessage));
     } finally {
       setLoading(false);
     }
@@ -721,12 +723,12 @@ export default function BacktestsPage() {
     if (!userId) return;
 
     setLoading(true);
-    setError(null);
-    setMessage(null);
+    setPageError(null);
+    setPageMessage(null);
 
     try {
       await deleteBacktest(userId, id);
-      setMessage("Backtest deleted.");
+      setPageMessage("Backtest deleted.");
       await loadBacktestsOnly(userId);
       if (selectedBacktestId === id) {
         setSelectedBacktestId("");
@@ -738,7 +740,7 @@ export default function BacktestsPage() {
     } catch (e: any) {
       const errorMessage =
         e?.message || "Failed to delete backtest. Please try again.";
-      setError(errorMessage);
+      setPageError(extractErrorMessage(errorMessage));
     } finally {
       setLoading(false);
     }
@@ -761,14 +763,14 @@ export default function BacktestsPage() {
             </div>
           )}
 
-          {message && (
+          {pageMessage && (
             <div className="mt-4 rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm text-emerald-200">
-              {message}
+              {pageMessage}
             </div>
           )}
-          {error && (
+          {pageError && (
             <div className="mt-4 rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
-              {error}
+              {pageError}
             </div>
           )}
         </div>
@@ -821,6 +823,12 @@ export default function BacktestsPage() {
           title="Create Backtest"
         >
           <form onSubmit={onCreate}>
+            {formError && (
+              <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
+                {formError}
+              </div>
+            )}
+
             <label className="block text-xs uppercase tracking-wide text-[var(--muted)]">
               Base strategy
             </label>

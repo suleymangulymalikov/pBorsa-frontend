@@ -10,6 +10,7 @@ import {
 } from "../api/account";
 import { getPositions } from "../api/positions";
 import { getUserStrategies } from "../api/strategies";
+import { extractErrorMessage } from "../api/errors";
 
 export default function DashboardPage() {
   const nav = useNavigate();
@@ -60,24 +61,6 @@ export default function DashboardPage() {
     const n = typeof v === "string" ? Number(v) : (v as number);
     if (Number.isNaN(n)) return false;
     return n < 0;
-  }
-
-  function extractErrorMessage(error: any) {
-    if (!error) return "Request failed";
-    const raw =
-      typeof error?.message === "string" ? error.message : String(error);
-    const trimmed = raw.trim();
-    if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
-      try {
-        const parsed = JSON.parse(trimmed);
-        if (typeof parsed?.message === "string") return parsed.message;
-        if (typeof parsed?.error === "string") return parsed.error;
-        if (typeof parsed?.detail === "string") return parsed.detail;
-      } catch {
-        return trimmed;
-      }
-    }
-    return trimmed;
   }
 
   function isMissingAlpacaError(message: string) {

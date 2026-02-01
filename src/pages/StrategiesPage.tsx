@@ -15,6 +15,7 @@ import {
   getUserStrategies,
   updateUserStrategy,
 } from "../api/strategies";
+import { extractErrorMessage } from "../api/errors";
 import Modal from "../components/Modal";
 import StockSelect from "../components/StockSelect";
 
@@ -77,8 +78,11 @@ export default function StrategiesPage() {
   const [userStrategies, setUserStrategies] = useState<UserStrategy[]>([]);
 
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+
+  const [pageError, setPageError] = useState<string | null>(null);
+  const [pageMessage, setPageMessage] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editName, setEditName] = useState("");
   const [editCurrentStatus, setEditCurrentStatus] = useState<string>("CREATED");
@@ -106,7 +110,7 @@ export default function StrategiesPage() {
   );
 
   async function loadAll(uid: number) {
-    setError(null);
+    setPageError(null);
 
     try {
       const [bases, users] = await Promise.all([
@@ -144,7 +148,7 @@ export default function StrategiesPage() {
     } catch (e: any) {
       const errorMessage =
         e?.message || "Failed to load strategies. Please try again.";
-      setError(errorMessage);
+      setPageError(extractErrorMessage(errorMessage));
     }
   }
 
@@ -160,12 +164,12 @@ export default function StrategiesPage() {
         setMe(meData);
 
         setLoading(true);
-        setMessage(null);
+        setPageMessage(null);
         await loadAll(meData.id);
       } catch (e: any) {
         const errorMessage =
           e?.message || "Unable to load user information. Please try again.";
-        setError(errorMessage);
+        setPageError(extractErrorMessage(errorMessage));
       } finally {
         setLoading(false);
       }
@@ -193,18 +197,18 @@ export default function StrategiesPage() {
     const sym = normalizedSymbol;
 
     if (!baseCode || !name.trim() || !sym) {
-      setError("Please select a base strategy, enter a name, and a symbol.");
+      setFormError("Please select a base strategy, enter a name, and a symbol.");
       return;
     }
 
     if (!budget || Number.isNaN(Number(budget)) || Number(budget) <= 0) {
-      setError("Budget must be greater than 0.");
+      setFormError("Budget must be greater than 0.");
       return;
     }
 
     setLoading(true);
-    setError(null);
-    setMessage(null);
+    setFormError(null);
+    setPageMessage(null);
 
     try {
       await createUserStrategy(userId, {
@@ -214,14 +218,14 @@ export default function StrategiesPage() {
         budget: Number(budget),
       });
 
-      setMessage("Strategy created.");
+      setPageMessage("Strategy created.");
       setName("");
       setShowCreateModal(false);
       await loadAll(userId);
     } catch (e: any) {
       const errorMessage =
         e?.message || "Failed to create strategy. Please try again.";
-      setError(errorMessage);
+      setPageError(extractErrorMessage(errorMessage));
     } finally {
       setLoading(false);
     }
@@ -231,19 +235,19 @@ export default function StrategiesPage() {
     if (!userId) return;
 
     setLoading(true);
-    setError(null);
-    setMessage(null);
+    setPageError(null);
+    setPageMessage(null);
 
     try {
       await activateUserStrategy(userId, id);
-      setMessage(
+      setPageMessage(
         "Activation requested. It may stay PREPARING for a short time.",
       );
       await loadAll(userId);
     } catch (e: any) {
       const errorMessage =
         e?.message || "Failed to activate strategy. Please try again.";
-      setError(errorMessage);
+      setPageError(extractErrorMessage(errorMessage));
     } finally {
       setLoading(false);
     }
@@ -253,17 +257,17 @@ export default function StrategiesPage() {
     if (!userId) return;
 
     setLoading(true);
-    setError(null);
-    setMessage(null);
+    setPageError(null);
+    setPageMessage(null);
 
     try {
       await deleteUserStrategy(userId, id);
-      setMessage("Strategy deleted.");
+      setPageMessage("Strategy deleted.");
       await loadAll(userId);
     } catch (e: any) {
       const errorMessage =
         e?.message || "Failed to delete strategy. Please try again.";
-      setError(errorMessage);
+      setPageError(extractErrorMessage(errorMessage));
     } finally {
       setLoading(false);
     }
@@ -273,17 +277,17 @@ export default function StrategiesPage() {
     if (!userId) return;
 
     setLoading(true);
-    setError(null);
-    setMessage(null);
+    setPageError(null);
+    setPageMessage(null);
 
     try {
       await updateUserStrategy(userId, id, { status: "STOPPED" });
-      setMessage("Strategy stopped.");
+      setPageMessage("Strategy stopped.");
       await loadAll(userId);
     } catch (e: any) {
       const errorMessage =
         e?.message || "Failed to stop strategy. Please try again.";
-      setError(errorMessage);
+      setPageError(extractErrorMessage(errorMessage));
     } finally {
       setLoading(false);
     }
@@ -305,7 +309,7 @@ export default function StrategiesPage() {
   const onSaveEdit = async (id: number) => {
     if (!userId) return;
     if (!editName.trim()) {
-      setError("Name is required.");
+      setPageError("Name is required.");
       return;
     }
 
@@ -314,18 +318,18 @@ export default function StrategiesPage() {
     };
 
     setLoading(true);
-    setError(null);
-    setMessage(null);
+    setPageError(null);
+    setPageMessage(null);
 
     try {
       await updateUserStrategy(userId, id, req);
-      setMessage("Strategy updated.");
+      setPageMessage("Strategy updated.");
       setEditingId(null);
       await loadAll(userId);
     } catch (e: any) {
       const errorMessage =
         e?.message || "Failed to update strategy. Please try again.";
-      setError(errorMessage);
+      setPageError(extractErrorMessage(errorMessage));
     } finally {
       setLoading(false);
     }
@@ -347,14 +351,14 @@ export default function StrategiesPage() {
             </div>
           )}
 
-          {message && (
+          {pageMessage && (
             <div className="mt-4 rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm text-emerald-200">
-              {message}
+              {pageMessage}
             </div>
           )}
-          {error && (
+          {pageError && (
             <div className="mt-4 rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
-              {error}
+              {pageError}
             </div>
           )}
         </div>
@@ -407,6 +411,12 @@ export default function StrategiesPage() {
           title="Create Strategy"
         >
           <form onSubmit={onCreate}>
+            {formError && (
+              <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
+                {formError}
+              </div>
+            )}
+
             <label className="block text-xs uppercase tracking-wide text-[var(--muted)]">
               Base strategy
             </label>

@@ -10,6 +10,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { auth } from "../lib/firebase";
 import { api } from "../api/client";
+import { extractErrorMessage } from "../api/errors";
 
 import type { AccountInfo } from "../api/account";
 import {
@@ -81,24 +82,6 @@ export default function AccountPage() {
     if (account.tradeSuspendedByUser) return false;
     return true;
   }, [account]);
-
-  function extractErrorMessage(error: any) {
-    if (!error) return "Request failed";
-    const raw =
-      typeof error?.message === "string" ? error.message : String(error);
-    const trimmed = raw.trim();
-    if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
-      try {
-        const parsed = JSON.parse(trimmed);
-        if (typeof parsed?.message === "string") return parsed.message;
-        if (typeof parsed?.error === "string") return parsed.error;
-        if (typeof parsed?.detail === "string") return parsed.detail;
-      } catch {
-        return trimmed;
-      }
-    }
-    return trimmed;
-  }
 
   function isMissingAlpacaError(message: string) {
     return message.toLowerCase().includes("alpaca credentials not found");
