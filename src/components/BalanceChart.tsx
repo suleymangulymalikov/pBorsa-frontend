@@ -173,13 +173,18 @@ export default function BalanceChart({
     const line = lineRef.current;
     if (!line) return;
 
-    const lineData = points
-      .map((p) => {
-        const time = toUtcTimestamp(p.timestamp);
-        if (!time) return null;
-        return { time, value: p.balance };
-      })
-      .filter(Boolean);
+    const pointMap = new Map<UTCTimestamp, number>();
+    points.forEach((p) => {
+      const time = toUtcTimestamp(p.timestamp);
+      if (!time) return;
+      const value = Number(p.balance);
+      if (!Number.isFinite(value)) return;
+      pointMap.set(time, value);
+    });
+
+    const lineData = Array.from(pointMap.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([time, value]) => ({ time, value }));
 
     line.setData(lineData as Parameters<typeof line.setData>[0]);
   }, [points]);

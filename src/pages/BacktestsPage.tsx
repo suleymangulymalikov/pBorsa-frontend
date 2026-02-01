@@ -141,7 +141,12 @@ function sanitizeBalanceTimeline(points: BacktestBalancePoint[]): BalancePoint[]
       const rawBalance = p.balance;
       const balance =
         typeof rawBalance === "string" ? Number(rawBalance) : rawBalance;
-      if (balance === null || balance === undefined || Number.isNaN(balance)) {
+      if (
+        balance === null ||
+        balance === undefined ||
+        Number.isNaN(balance) ||
+        !Number.isFinite(Number(balance))
+      ) {
         return null;
       }
       return { timestamp: ts, balance: Number(balance) };
