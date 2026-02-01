@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { auth } from "../lib/firebase";
 import { api } from "../api/client";
+import { useStocks } from "../hooks/useStocks";
 
 import type { BaseStrategy, UserStrategy, StrategyPnL } from "../api/strategies";
 import {
@@ -15,6 +16,7 @@ import {
   updateUserStrategy,
 } from "../api/strategies";
 import Modal from "../components/Modal";
+import StockSelect from "../components/StockSelect";
 
 type MeResponse = {
   id: number;
@@ -92,6 +94,8 @@ export default function StrategiesPage() {
 
   // PnL data
   const [pnlData, setPnlData] = useState<Record<number, StrategyPnL>>({});
+
+  const { stocks, loading: stocksLoading, error: stocksError } = useStocks();
 
   const normalizedSymbol = useMemo(() => symbol.trim().toUpperCase(), [symbol]);
 
@@ -437,13 +441,19 @@ export default function StrategiesPage() {
             <label className="mt-4 block text-xs uppercase tracking-wide text-[var(--muted)]">
               Symbol
             </label>
-            <input
-              className="mt-2 w-full rounded-lg border border-[#1f2e44] bg-[#0b1728] px-3 py-2 text-sm text-white"
+            <StockSelect
               value={symbol}
-              onChange={(e) => setSymbol(e.target.value)}
-              placeholder="AAPL"
+              onChange={setSymbol}
+              options={stocks}
+              placeholder="Search by symbol or company"
+              disabled={loading || stocksLoading}
               required
             />
+            {stocksError ? (
+              <div className="mt-1 text-xs text-red-200">
+                {stocksError}
+              </div>
+            ) : null}
 
             <label className="mt-4 block text-xs uppercase tracking-wide text-[var(--muted)]">
               Budget (USD)

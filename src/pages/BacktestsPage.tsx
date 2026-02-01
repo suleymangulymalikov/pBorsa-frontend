@@ -5,6 +5,8 @@ import { auth } from "../lib/firebase";
 import { api } from "../api/client";
 import Modal from "../components/Modal";
 import StockChart, { type ChartMarker } from "../components/StockChart";
+import StockSelect from "../components/StockSelect";
+import { useStocks } from "../hooks/useStocks";
 import {
   getHistoricalBars,
   getChunkSizeForTimeframe,
@@ -192,6 +194,8 @@ export default function BacktestsPage() {
   const [showCandles, setShowCandles] = useState(true);
   const [showLine, setShowLine] = useState(false);
   const [showVolume, setShowVolume] = useState(true);
+
+  const { stocks, loading: stocksLoading, error: stocksError } = useStocks();
 
   const normalizedSymbol = useMemo(() => symbol.trim().toUpperCase(), [symbol]);
 
@@ -712,13 +716,19 @@ export default function BacktestsPage() {
             <label className="mt-4 block text-xs uppercase tracking-wide text-[var(--muted)]">
               Symbol
             </label>
-            <input
-              className="mt-2 w-full rounded-lg border border-[#1f2e44] bg-[#0b1728] px-3 py-2 text-sm text-white"
+            <StockSelect
               value={symbol}
-              onChange={(e) => setSymbol(e.target.value)}
-              placeholder="AAPL"
+              onChange={setSymbol}
+              options={stocks}
+              placeholder="Search by symbol or company"
+              disabled={loading || stocksLoading}
               required
             />
+            {stocksError ? (
+              <div className="mt-1 text-xs text-red-200">
+                {stocksError}
+              </div>
+            ) : null}
 
             <label className="mt-4 block text-xs uppercase tracking-wide text-[var(--muted)]">
               Budget (USD)

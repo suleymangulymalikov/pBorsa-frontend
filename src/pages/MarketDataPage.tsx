@@ -14,6 +14,8 @@ import {
   getLatestBars,
 } from "../api/barData";
 import StockChart, { type ChartHover } from "../components/StockChart";
+import StockSelect from "../components/StockSelect";
+import { useStocks } from "../hooks/useStocks";
 
 type MeResponse = {
   id: number;
@@ -122,11 +124,11 @@ export default function MarketDataPage() {
   const [timeframe, setTimeframe] = useState<Timeframe>("5Min");
   const [datePreset, setDatePreset] = useState<DatePreset>("1M");
 
-  const [symbolsInput, setSymbolsInput] = useState("AAPL,MSFT,NVDA");
   const [symbols, setSymbols] = useState<string[]>(
     normalizeSymbols("AAPL,MSFT,NVDA"),
   );
   const [activeSymbol, setActiveSymbol] = useState("AAPL");
+  const [watchlistSymbol, setWatchlistSymbol] = useState("AAPL");
 
   const [bars, setBars] = useState<StockBar[]>([]);
   const [latestBars, setLatestBars] = useState<Record<string, StockBar>>({});
@@ -141,6 +143,8 @@ export default function MarketDataPage() {
   const [showLine, setShowLine] = useState(true);
   const [showVolume, setShowVolume] = useState(true);
   const [chartResetKey, setChartResetKey] = useState(0);
+
+  const { stocks, loading: stocksLoading, error: stocksError } = useStocks();
 
   // Infinite scroll states
   const [earliestLoadedDate, setEarliestLoadedDate] = useState<string | null>(null);
@@ -237,24 +241,23 @@ export default function MarketDataPage() {
     }
   }, []);
 
-  const onApplyWatchlist = () => {
-    const next = normalizeSymbols(symbolsInput);
-    if (next.length === 0) {
-      setError("Please add at least one symbol.");
+  const onAddToWatchlist = () => {
+    const nextSymbol = watchlistSymbol.trim().toUpperCase();
+    if (!nextSymbol) {
+      setError("Please select a symbol.");
       return;
     }
-    setSymbols(next);
-    if (!next.includes(activeSymbol)) {
-      setActiveSymbol(next[0]);
-    }
+    setSymbols((prev) => {
+      if (prev.includes(nextSymbol)) return prev;
+      return [...prev, nextSymbol];
+    });
+    setActiveSymbol(nextSymbol);
     setError(null);
-    void refreshWatchlist();
   };
 
   const onRemoveSymbol = (symbol: string) => {
     const next = symbols.filter((s) => s !== symbol);
     setSymbols(next);
-    setSymbolsInput(next.join(","));
     if (activeSymbol === symbol) {
       setActiveSymbol(next[0] ?? "");
     }
@@ -465,18 +468,30 @@ export default function MarketDataPage() {
             </button>
           </div>
 
-          <div className="mt-4 flex flex-wrap items-center gap-3">
-            <input
-              className="min-w-[260px] rounded-lg border border-[#1f2e44] bg-[#0b1728] px-3 py-2 text-sm text-white"
-              value={symbolsInput}
-              onChange={(e) => setSymbolsInput(e.target.value)}
-              placeholder="AAPL,MSFT,NVDA"
-            />
+          <div className="mt-4 flex flex-wrap items-end gap-3">
+            <div className="min-w-[260px] flex-1">
+              <label className="block text-xs uppercase tracking-wide text-[var(--muted)]">
+                Add symbol
+              </label>
+              <StockSelect
+                value={watchlistSymbol}
+                onChange={setWatchlistSymbol}
+                options={stocks}
+                placeholder="Search by symbol or company"
+                disabled={stocksLoading}
+              />
+              {stocksError ? (
+                <div className="mt-1 text-xs text-red-200">
+                  {stocksError}
+                </div>
+              ) : null}
+            </div>
             <button
-              onClick={onApplyWatchlist}
+              onClick={onAddToWatchlist}
               className="rounded-lg bg-[#1f6feb] px-4 py-2 text-sm font-semibold text-white"
+              disabled={stocksLoading}
             >
-              Apply watchlist
+              Add to watchlist
             </button>
           </div>
 
