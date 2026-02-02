@@ -507,6 +507,45 @@ export default function BacktestsPage() {
     [ordersSort, resetOrdersState],
   );
 
+  const refreshBacktestStatuses = useCallback(
+    async (uid: number) => {
+      try {
+        const latest = await getBacktests(uid);
+        if (!Array.isArray(latest) || latest.length === 0) return;
+
+        const latestById = new Map(latest.map((b) => [b.id, b]));
+
+        setBacktests((prev) => {
+          let changed = false;
+          const next = prev.map((b) => {
+            const latestItem = latestById.get(b.id);
+            if (!latestItem) return b;
+            if (latestItem.status !== b.status) {
+              changed = true;
+              return { ...b, status: latestItem.status };
+            }
+            return b;
+          });
+          return changed ? next : prev;
+        });
+
+        if (selectedBacktestId !== "") {
+          const latestSelected = latestById.get(selectedBacktestId as number);
+          if (latestSelected) {
+            setSelectedBacktest((prev) => {
+              if (!prev || prev.id !== latestSelected.id) return prev;
+              if (prev.status === latestSelected.status) return prev;
+              return { ...prev, status: latestSelected.status };
+            });
+          }
+        }
+      } catch {
+        // ignore polling errors
+      }
+    },
+    [selectedBacktestId],
+  );
+
   const loadChartData = useCallback(async () => {
     if (!userId || !selectedBacktest?.symbol) return;
     if (!selectedBacktest.testingStart || !selectedBacktest.testingEnd) return;
@@ -710,27 +749,14 @@ export default function BacktestsPage() {
     if (!userId || !hasRunning) return;
 
     const t = setInterval(() => {
-      void loadBacktestsOnly(userId);
-      if (selectedBacktestId !== "") {
-        void loadBacktestDetail(userId, selectedBacktestId as number);
-        void loadOrdersPage(
-          userId,
-          selectedBacktestId as number,
-          ordersPageIndex,
-          ordersPageSize,
-        );
-      }
+      void refreshBacktestStatuses(userId);
     }, 3000);
 
     return () => clearInterval(t);
   }, [
     userId,
     hasRunning,
-    selectedBacktestId,
-    loadBacktestDetail,
-    loadOrdersPage,
-    ordersPageIndex,
-    ordersPageSize,
+    refreshBacktestStatuses,
   ]);
 
   useEffect(() => {
