@@ -304,6 +304,10 @@ export default function BacktestsPage() {
     selectedBacktestFromList?.sellOrdersCount,
   ]);
 
+  const selectedBacktestStatus = useMemo(() => {
+    return selectedBacktestFromList?.status ?? selectedBacktest?.status ?? "-";
+  }, [selectedBacktestFromList?.status, selectedBacktest?.status]);
+
   const ordersWindow = useMemo(() => {
     const total = orders.length;
     const safeHeight = Math.max(ordersViewportHeight, ORDER_ROW_HEIGHT);
@@ -529,21 +533,11 @@ export default function BacktestsPage() {
           return changed ? next : prev;
         });
 
-        if (selectedBacktestId !== "") {
-          const latestSelected = latestById.get(selectedBacktestId as number);
-          if (latestSelected) {
-            setSelectedBacktest((prev) => {
-              if (!prev || prev.id !== latestSelected.id) return prev;
-              if (prev.status === latestSelected.status) return prev;
-              return { ...prev, status: latestSelected.status };
-            });
-          }
-        }
       } catch {
         // ignore polling errors
       }
     },
-    [selectedBacktestId],
+    [],
   );
 
   const loadChartData = useCallback(async () => {
@@ -1504,7 +1498,7 @@ export default function BacktestsPage() {
                 <div className="rounded-lg border border-[#132033] bg-[#0b1728] p-4">
                   <div className="text-xs text-[var(--muted)]">Status</div>
                   <div className="mt-1">
-                    <BacktestBadge text={String(selectedBacktest.status)} />
+                    <BacktestBadge text={String(selectedBacktestStatus)} />
                   </div>
                 </div>
                 <div className="rounded-lg border border-[#132033] bg-[#0b1728] p-4">
