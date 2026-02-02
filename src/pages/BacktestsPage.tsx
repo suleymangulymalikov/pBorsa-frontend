@@ -532,7 +532,7 @@ export default function BacktestsPage() {
   const loadOrdersPage = useCallback(
     async (uid: number, backtestId: number, page: number, size: number) => {
       setOrdersLoading(true);
-      setError(null);
+      setPageError(null);
 
       try {
         const data = await getBacktestOrdersPage(uid, backtestId, {
@@ -572,7 +572,7 @@ export default function BacktestsPage() {
       } catch (e: any) {
         const errorMessage =
           e?.message || "Failed to load backtest orders. Please try again.";
-        setError(errorMessage);
+        setPageError(extractErrorMessage(errorMessage));
         if (!hasOrdersRef.current) {
           resetOrdersState();
         }
@@ -1008,7 +1008,7 @@ export default function BacktestsPage() {
     } catch (e: any) {
       const errorMessage =
         e?.message || "Failed to create backtest. Please try again.";
-      setPageError(extractErrorMessage(errorMessage));
+      setFormError(extractErrorMessage(errorMessage));
     } finally {
       setLoading(false);
     }
@@ -1097,7 +1097,10 @@ export default function BacktestsPage() {
           <div className="flex items-center justify-between">
             <div className="text-sm font-semibold">Base Strategies</div>
             <button
-              onClick={() => setShowCreateModal(true)}
+              onClick={() => {
+                setFormError(null);
+                setShowCreateModal(true);
+              }}
               className="rounded-lg bg-[#1f6feb] px-4 py-2 text-sm font-semibold text-white"
             >
               + Create Backtest
@@ -1137,7 +1140,10 @@ export default function BacktestsPage() {
 
         <Modal
           isOpen={showCreateModal}
-          onClose={() => setShowCreateModal(false)}
+          onClose={() => {
+            setFormError(null);
+            setShowCreateModal(false);
+          }}
           title="Create Backtest"
         >
           <form onSubmit={onCreate}>
@@ -1233,7 +1239,10 @@ export default function BacktestsPage() {
             <div className="mt-5 flex justify-end gap-3">
               <button
                 type="button"
-                onClick={() => setShowCreateModal(false)}
+                onClick={() => {
+                  setFormError(null);
+                  setShowCreateModal(false);
+                }}
                 className="rounded-lg border border-[#1f2e44] px-4 py-2 text-sm text-white"
               >
                 Cancel

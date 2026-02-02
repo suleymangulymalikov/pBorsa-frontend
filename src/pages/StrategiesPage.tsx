@@ -225,7 +225,7 @@ export default function StrategiesPage() {
     } catch (e: any) {
       const errorMessage =
         e?.message || "Failed to create strategy. Please try again.";
-      setPageError(extractErrorMessage(errorMessage));
+      setFormError(extractErrorMessage(errorMessage));
     } finally {
       setLoading(false);
     }
@@ -367,7 +367,10 @@ export default function StrategiesPage() {
           <div className="flex items-center justify-between">
             <div className="text-sm font-semibold">Base Strategies</div>
             <button
-              onClick={() => setShowCreateModal(true)}
+              onClick={() => {
+                setFormError(null);
+                setShowCreateModal(true);
+              }}
               className="rounded-lg bg-[#1f6feb] px-4 py-2 text-sm font-semibold text-white"
             >
               + Create Strategy
@@ -407,7 +410,10 @@ export default function StrategiesPage() {
 
         <Modal
           isOpen={showCreateModal}
-          onClose={() => setShowCreateModal(false)}
+          onClose={() => {
+            setFormError(null);
+            setShowCreateModal(false);
+          }}
           title="Create Strategy"
         >
           <form onSubmit={onCreate}>
@@ -484,7 +490,10 @@ export default function StrategiesPage() {
             <div className="mt-5 flex justify-end gap-3">
               <button
                 type="button"
-                onClick={() => setShowCreateModal(false)}
+                onClick={() => {
+                  setFormError(null);
+                  setShowCreateModal(false);
+                }}
                 className="rounded-lg border border-[#1f2e44] px-4 py-2 text-sm text-white"
               >
                 Cancel
