@@ -469,6 +469,8 @@ export default function OrdersPage() {
       return;
     }
 
+    setSelectedOrderDetail(null);
+    setSelectedOrderHistory([]);
     setSelectedOrderId(oid);
     setDetailLoading(true);
     setError(null);
@@ -666,7 +668,7 @@ export default function OrdersPage() {
           <div className="rounded-2xl border border-[#132033] bg-[#0f1b2d] p-6">
             <div className="text-sm font-semibold">Selected Order Detail</div>
 
-            {detailLoading ? (
+            {selectedOrderId && detailLoading ? (
               <div className="mt-3 text-sm text-[var(--muted)]">
                 Loading detail.
               </div>
