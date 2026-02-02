@@ -75,6 +75,33 @@ function sanitizeBars(bars: StockBar[]) {
     });
 }
 
+function getTimeframeBucketMs(timeframe: Timeframe): number {
+  switch (timeframe) {
+    case "1Min":
+      return 60 * 1000;
+    case "5Min":
+      return 5 * 60 * 1000;
+    case "15Min":
+      return 15 * 60 * 1000;
+    case "30Min":
+      return 30 * 60 * 1000;
+    case "1Hour":
+      return 60 * 60 * 1000;
+    case "4Hour":
+      return 4 * 60 * 60 * 1000;
+    case "1Day":
+      return 24 * 60 * 60 * 1000;
+    case "1Week":
+      return 7 * 24 * 60 * 60 * 1000;
+    default:
+      return 24 * 60 * 60 * 1000;
+  }
+}
+
+function roundToTimeframeBucket(timestampMs: number, bucketMs: number): number {
+  return Math.floor(timestampMs / bucketMs) * bucketMs;
+}
+
 function OrderBadge({ status }: { status: string }) {
   let cls = "bg-gray-500/10 text-gray-300 border-gray-500/20";
 
@@ -199,22 +226,66 @@ export default function OrdersPage() {
 
   const chartMarkers = useMemo((): ChartMarker[] => {
     if (!selectedStrategy?.symbol) return [];
-    return filledOrders
-      .filter((o) => o.symbol === selectedStrategy.symbol)
-      .map((order) => {
-        const time = toUtcTimestamp(order.filledAt);
-        if (!time) return null;
-        const isBuy = order.side === "BUY";
-        return {
-          time,
-          position: isBuy ? "belowBar" : "aboveBar",
-          color: isBuy ? "#22c55e" : "#ef4444",
-          shape: isBuy ? "arrowUp" : "arrowDown",
-          text: String(order.quantity),
-        } as ChartMarker;
-      })
-      .filter(Boolean) as ChartMarker[];
-  }, [filledOrders, selectedStrategy?.symbol]);
+
+    const bucketMs = getTimeframeBucketMs(chartTimeframe);
+    const filteredOrders = filledOrders.filter(
+      (o) => o.symbol === selectedStrategy.symbol && o.filledAt,
+    );
+
+    // Group orders by timeframe bucket and calculate net quantity
+    const bucketMap = new Map<
+      number,
+      { buyQty: number; sellQty: number; bucketTimeSec: number }
+    >();
+
+    for (const order of filteredOrders) {
+      const timestampMs = new Date(order.filledAt).getTime();
+      if (Number.isNaN(timestampMs)) continue;
+
+      const bucketKey = roundToTimeframeBucket(timestampMs, bucketMs);
+      const bucketTimeSec = Math.floor(bucketKey / 1000);
+
+      if (!bucketMap.has(bucketKey)) {
+        bucketMap.set(bucketKey, { buyQty: 0, sellQty: 0, bucketTimeSec });
+      }
+
+      const bucket = bucketMap.get(bucketKey)!;
+      const qty = Number(order.quantity) || 0;
+      if (order.side === "BUY") {
+        bucket.buyQty += qty;
+      } else if (order.side === "SELL") {
+        bucket.sellQty += qty;
+      }
+    }
+
+    // Convert buckets to markers - separate arrows for buys and sells
+    const markers: ChartMarker[] = [];
+    for (const bucket of bucketMap.values()) {
+      // Add buy marker if there were any buys
+      if (bucket.buyQty > 0) {
+        markers.push({
+          time: bucket.bucketTimeSec as ChartMarker["time"],
+          position: "belowBar",
+          color: "#22c55e",
+          shape: "arrowUp",
+          text: bucket.buyQty.toFixed(1),
+        });
+      }
+
+      // Add sell marker if there were any sells
+      if (bucket.sellQty > 0) {
+        markers.push({
+          time: bucket.bucketTimeSec as ChartMarker["time"],
+          position: "aboveBar",
+          color: "#ef4444",
+          shape: "arrowDown",
+          text: bucket.sellQty.toFixed(1),
+        });
+      }
+    }
+
+    return markers;
+  }, [filledOrders, selectedStrategy?.symbol, chartTimeframe]);
 
   const filledOrdersSummary = useMemo(() => {
     const buyCount = filledOrders.filter((o) => o.side === "BUY").length;

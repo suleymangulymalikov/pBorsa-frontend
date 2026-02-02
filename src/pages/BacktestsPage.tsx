@@ -21,6 +21,7 @@ import {
   deleteBacktest,
   getBacktest,
   getBacktestBalanceTimeline,
+  getBacktestOrdersPage,
   getBacktests,
   startBacktest,
   type Backtest,
@@ -98,10 +99,31 @@ function formatWinRate(total?: number | null, wins?: number | null): string {
   return `${((w / t) * 100).toFixed(2)}%`;
 }
 
-function toUtcTimestamp(value: string): number | null {
-  const t = new Date(value).getTime();
-  if (Number.isNaN(t)) return null;
-  return Math.floor(t / 1000);
+function getTimeframeBucketMs(timeframe: Timeframe): number {
+  switch (timeframe) {
+    case "1Min":
+      return 60 * 1000;
+    case "5Min":
+      return 5 * 60 * 1000;
+    case "15Min":
+      return 15 * 60 * 1000;
+    case "30Min":
+      return 30 * 60 * 1000;
+    case "1Hour":
+      return 60 * 60 * 1000;
+    case "4Hour":
+      return 4 * 60 * 60 * 1000;
+    case "1Day":
+      return 24 * 60 * 60 * 1000;
+    case "1Week":
+      return 7 * 24 * 60 * 60 * 1000;
+    default:
+      return 24 * 60 * 60 * 1000;
+  }
+}
+
+function roundToTimeframeBucket(timestampMs: number, bucketMs: number): number {
+  return Math.floor(timestampMs / bucketMs) * bucketMs;
 }
 
 function sanitizeBars(bars: StockBar[]) {
@@ -185,6 +207,7 @@ function BacktestBadge({ text }: { text: string }) {
 
 const ORDER_ROW_HEIGHT = 44;
 const ORDER_OVERSCAN = 6;
+const ORDER_PAGE_SIZES = [25, 50, 100];
 
 export default function BacktestsPage() {
   const [me, setMe] = useState<MeResponse | null>(null);
@@ -201,7 +224,13 @@ export default function BacktestsPage() {
   );
   const [orders, setOrders] = useState<BacktestOrder[]>([]);
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
+  const [ordersPageIndex, setOrdersPageIndex] = useState(0);
+  const [ordersPageSize, setOrdersPageSize] = useState(50);
+  const [ordersTotalPages, setOrdersTotalPages] = useState(0);
+  const [ordersTotalElements, setOrdersTotalElements] = useState(0);
+  const [ordersLoading, setOrdersLoading] = useState(false);
   const ordersContainerRef = useRef<HTMLDivElement | null>(null);
+  const hasOrdersRef = useRef(false);
   const [ordersScrollTop, setOrdersScrollTop] = useState(0);
   const [ordersViewportHeight, setOrdersViewportHeight] = useState(0);
 
@@ -212,6 +241,11 @@ export default function BacktestsPage() {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMoreHistory, setHasMoreHistory] = useState(true);
   const loadMoreTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isLoadingChartRef = useRef(false);
+
+  // Maximum number of consecutive empty fetches before giving up
+  // For 1Min/5Min with 3-day chunks, 5 retries = 15 days coverage (handles long weekends/holidays)
+  const MAX_EMPTY_FETCH_RETRIES = 5;
 
   const [pageError, setPageError] = useState<string | null>(null);
   const [pageMessage, setPageMessage] = useState<string | null>(null);
@@ -239,6 +273,10 @@ export default function BacktestsPage() {
   const { stocks, loading: stocksLoading, error: stocksError } = useStocks();
 
   const normalizedSymbol = useMemo(() => symbol.trim().toUpperCase(), [symbol]);
+  const ordersSort = useMemo(
+    () => ["executedAt,desc", "createdAt,desc"],
+    [],
+  );
 
   const hasRunning = useMemo(
     () =>
@@ -247,6 +285,11 @@ export default function BacktestsPage() {
       ),
     [backtests],
   );
+
+  const selectedBacktestFromList = useMemo(() => {
+    if (selectedBacktestId === "") return null;
+    return backtests.find((b) => b.id === selectedBacktestId) ?? null;
+  }, [backtests, selectedBacktestId]);
 
   const selectedOrder = useMemo(() => {
     if (!selectedOrderId) return null;
@@ -267,23 +310,34 @@ export default function BacktestsPage() {
     );
   }, [backtests]);
 
-  const sortedOrders = useMemo(() => {
-    return [...orders].sort((a, b) => {
-      const at = new Date(a.executedAt ?? a.createdAt ?? 0).getTime();
-      const bt = new Date(b.executedAt ?? b.createdAt ?? 0).getTime();
-      return bt - at;
-    });
-  }, [orders]);
-
   const ordersSummary = useMemo(() => {
-    const total = orders.length;
-    const buyCount = orders.filter((o) => o.side === "BUY").length;
-    const sellCount = orders.filter((o) => o.side === "SELL").length;
-    return { total, buyCount, sellCount };
-  }, [orders]);
+    return { total: ordersTotalElements };
+  }, [ordersTotalElements]);
+
+  const selectedOrderCounts = useMemo(() => {
+    return {
+      buy:
+        selectedBacktest?.buyOrdersCount ??
+        selectedBacktestFromList?.buyOrdersCount ??
+        0,
+      sell:
+        selectedBacktest?.sellOrdersCount ??
+        selectedBacktestFromList?.sellOrdersCount ??
+        0,
+    };
+  }, [
+    selectedBacktest?.buyOrdersCount,
+    selectedBacktest?.sellOrdersCount,
+    selectedBacktestFromList?.buyOrdersCount,
+    selectedBacktestFromList?.sellOrdersCount,
+  ]);
+
+  const selectedBacktestStatus = useMemo(() => {
+    return selectedBacktestFromList?.status ?? selectedBacktest?.status ?? "-";
+  }, [selectedBacktestFromList?.status, selectedBacktest?.status]);
 
   const ordersWindow = useMemo(() => {
-    const total = sortedOrders.length;
+    const total = orders.length;
     const safeHeight = Math.max(ordersViewportHeight, ORDER_ROW_HEIGHT);
     const baseStart = Math.floor(ordersScrollTop / ORDER_ROW_HEIGHT);
     const startIndex = Math.max(0, baseStart - ORDER_OVERSCAN);
@@ -296,32 +350,100 @@ export default function BacktestsPage() {
       endIndex,
       topPad: startIndex * ORDER_ROW_HEIGHT,
       bottomPad: Math.max(0, total - endIndex) * ORDER_ROW_HEIGHT,
-      visibleOrders: sortedOrders.slice(startIndex, endIndex),
+      visibleOrders: orders.slice(startIndex, endIndex),
     };
   }, [
-    sortedOrders,
+    orders,
     ordersScrollTop,
     ordersViewportHeight,
   ]);
 
+  const ordersDisplayRange = useMemo(() => {
+    if (ordersTotalElements === 0 || ordersPageSize <= 0) {
+      return { start: 0, end: 0, total: ordersTotalElements };
+    }
+    const start = ordersPageIndex * ordersPageSize + 1;
+    const end = Math.min(
+      (ordersPageIndex + 1) * ordersPageSize,
+      ordersTotalElements,
+    );
+    return { start, end, total: ordersTotalElements };
+  }, [
+    ordersPageIndex,
+    ordersPageSize,
+    ordersTotalElements,
+  ]);
+
+  const ordersPageLabel =
+    ordersTotalPages > 0
+      ? `${ordersPageIndex + 1} of ${ordersTotalPages}`
+      : "0 of 0";
+  const canOrdersPageBack = ordersPageIndex > 0;
+  const canOrdersPageForward =
+    ordersTotalPages > 0 && ordersPageIndex < ordersTotalPages - 1;
+
   const chartMarkers = useMemo((): ChartMarker[] => {
     if (!selectedBacktest?.symbol) return [];
-    return orders
-      .filter((o) => o.symbol === selectedBacktest.symbol)
-      .map((order) => {
-        const time = order.executedAt ? toUtcTimestamp(order.executedAt) : null;
-        if (!time) return null;
-        const isBuy = order.side === "BUY";
-        return {
-          time: time as ChartMarker["time"],
-          position: isBuy ? "belowBar" : "aboveBar",
-          color: isBuy ? "#22c55e" : "#ef4444",
-          shape: isBuy ? "arrowUp" : "arrowDown",
-          text: String(order.quantity ?? ""),
-        } as ChartMarker;
-      })
-      .filter(Boolean) as ChartMarker[];
-  }, [orders, selectedBacktest?.symbol]);
+
+    const bucketMs = getTimeframeBucketMs(chartTimeframe);
+    const filteredOrders = orders.filter(
+      (o) => o.symbol === selectedBacktest.symbol && o.executedAt,
+    );
+
+    // Group orders by timeframe bucket and calculate net quantity
+    const bucketMap = new Map<
+      number,
+      { buyQty: number; sellQty: number; bucketTimeSec: number }
+    >();
+
+    for (const order of filteredOrders) {
+      const timestampMs = new Date(order.executedAt!).getTime();
+      if (Number.isNaN(timestampMs)) continue;
+
+      const bucketKey = roundToTimeframeBucket(timestampMs, bucketMs);
+      const bucketTimeSec = Math.floor(bucketKey / 1000);
+
+      if (!bucketMap.has(bucketKey)) {
+        bucketMap.set(bucketKey, { buyQty: 0, sellQty: 0, bucketTimeSec });
+      }
+
+      const bucket = bucketMap.get(bucketKey)!;
+      const qty = Number(order.quantity) || 0;
+      if (order.side === "BUY") {
+        bucket.buyQty += qty;
+      } else if (order.side === "SELL") {
+        bucket.sellQty += qty;
+      }
+    }
+
+    // Convert buckets to markers - separate arrows for buys and sells
+    const markers: ChartMarker[] = [];
+    for (const bucket of bucketMap.values()) {
+      // Add buy marker if there were any buys
+      if (bucket.buyQty > 0) {
+        markers.push({
+          time: bucket.bucketTimeSec as ChartMarker["time"],
+          position: "belowBar",
+          color: "#22c55e",
+          shape: "arrowUp",
+          text: bucket.buyQty.toFixed(1),
+        });
+      }
+
+      // Add sell marker if there were any sells
+      if (bucket.sellQty > 0) {
+        markers.push({
+          time: bucket.bucketTimeSec as ChartMarker["time"],
+          position: "aboveBar",
+          color: "#ef4444",
+          shape: "arrowDown",
+          text: bucket.sellQty.toFixed(1),
+        });
+      }
+    }
+
+    return markers;
+  }, [orders, selectedBacktest?.symbol, chartTimeframe]);
 
   const balanceRange = useMemo(() => {
     const start =
@@ -335,6 +457,24 @@ export default function BacktestsPage() {
     selectedBacktest?.testingStart,
     selectedBacktest?.testingEnd,
   ]);
+
+  const resetOrdersState = useCallback(() => {
+    setOrders([]);
+    setOrdersTotalPages(0);
+    setOrdersTotalElements(0);
+    setSelectedOrderId(null);
+    hasOrdersRef.current = false;
+  }, []);
+
+  const selectBacktest = useCallback(
+    (id: number | "") => {
+      if (id === selectedBacktestId) return;
+      setSelectedBacktestId(id);
+      setOrdersPageIndex(0);
+      resetOrdersState();
+    },
+    [resetOrdersState, selectedBacktestId],
+  );
 
   async function loadBaseAndBacktests(uid: number) {
     setPageError(null);
@@ -375,17 +515,98 @@ export default function BacktestsPage() {
       try {
         const data = await getBacktest(uid, backtestId);
         setSelectedBacktest(data);
-        setOrders(Array.isArray(data.orders) ? data.orders : []);
-        setSelectedOrderId(null);
       } catch (e: any) {
         const errorMessage =
           e?.message || "Failed to load backtest detail. Please try again.";
         setPageError(extractErrorMessage(errorMessage));
         setSelectedBacktest(null);
-        setOrders([]);
+        resetOrdersState();
         setBalanceTimeline([]);
       } finally {
         setDetailLoading(false);
+      }
+    },
+    [resetOrdersState],
+  );
+
+  const loadOrdersPage = useCallback(
+    async (uid: number, backtestId: number, page: number, size: number) => {
+      setOrdersLoading(true);
+      setError(null);
+
+      try {
+        const data = await getBacktestOrdersPage(uid, backtestId, {
+          page,
+          size,
+          sort: ordersSort,
+        });
+
+        const content = Array.isArray(data?.content) ? data.content : [];
+        const totalElements =
+          typeof data?.totalElements === "number" &&
+          Number.isFinite(data.totalElements)
+            ? data.totalElements
+            : content.length;
+        const resolvedSize =
+          typeof data?.size === "number" && Number.isFinite(data.size)
+            ? data.size
+            : size;
+        const totalPages =
+          typeof data?.totalPages === "number" &&
+          Number.isFinite(data.totalPages)
+            ? data.totalPages
+            : resolvedSize > 0
+              ? Math.ceil(totalElements / resolvedSize)
+              : 0;
+
+        setOrders(content);
+        hasOrdersRef.current = content.length > 0;
+        setOrdersTotalPages(totalPages);
+        setOrdersTotalElements(totalElements);
+
+        if (typeof data?.number === "number" && data.number !== page) {
+          setOrdersPageIndex(data.number);
+        } else if (totalPages > 0 && page > totalPages - 1) {
+          setOrdersPageIndex(totalPages - 1);
+        }
+      } catch (e: any) {
+        const errorMessage =
+          e?.message || "Failed to load backtest orders. Please try again.";
+        setError(errorMessage);
+        if (!hasOrdersRef.current) {
+          resetOrdersState();
+        }
+      } finally {
+        setOrdersLoading(false);
+      }
+    },
+    [ordersSort, resetOrdersState],
+  );
+
+  const refreshBacktestStatuses = useCallback(
+    async (uid: number) => {
+      try {
+        const latest = await getBacktests(uid);
+        if (!Array.isArray(latest) || latest.length === 0) return;
+
+        const latestById = new Map(latest.map((b) => [b.id, b]));
+
+        setBacktests((prev) => {
+          let changed = false;
+          const next = prev.map((b) => {
+            const latestItem = latestById.get(b.id);
+            if (!latestItem) return b;
+            if (latestItem.status !== b.status) {
+              changed = true;
+              return { ...b, status: latestItem.status };
+            }
+            return b;
+          });
+          return changed ? next : prev;
+        });
+
+      } catch {
+        // ignore polling errors
       }
     },
     [],
@@ -394,36 +615,79 @@ export default function BacktestsPage() {
   const loadChartData = useCallback(async () => {
     if (!userId || !selectedBacktest?.symbol) return;
     if (!selectedBacktest.testingStart || !selectedBacktest.testingEnd) return;
+    
+    // Prevent concurrent executions using ref (state check is not enough due to batched updates)
+    if (isLoadingChartRef.current) return;
+    isLoadingChartRef.current = true;
 
     setChartLoading(true);
     try {
-      const bars = await getHistoricalBars(
-        userId,
-        selectedBacktest.symbol,
-        chartTimeframe,
-        {
-          end: selectedBacktest.testingEnd,
-          limit: 500,
-        },
-      );
-      const cleanedBars = filterBarsToRange(
-        sanitizeBars(Array.isArray(bars) ? bars : []),
-        selectedBacktest.testingStart,
-        selectedBacktest.testingEnd,
-      );
-      setChartBars(cleanedBars);
-      setChartResetKey((k) => k + 1);
-      if (cleanedBars.length > 0 && cleanedBars[0].timestamp) {
-        setEarliestLoadedDate(cleanedBars[0].timestamp);
-      } else {
-        setEarliestLoadedDate(null);
+      const minStart = new Date(selectedBacktest.testingStart);
+      const chunkDays = getChunkSizeForTimeframe(chartTimeframe);
+      let currentEnd = new Date(selectedBacktest.testingEnd);
+      let retryCount = 0;
+      let allBars: StockBar[] = [];
+
+      // Loop to handle initial load falling on non-trading hours (weekends, holidays)
+      while (retryCount < MAX_EMPTY_FETCH_RETRIES) {
+        const bars = await getHistoricalBars(
+          userId,
+          selectedBacktest.symbol,
+          chartTimeframe,
+          {
+            end: currentEnd.toISOString(),
+            limit: 500,
+          },
+        );
+
+        const cleanedBars = filterBarsToRange(
+          sanitizeBars(Array.isArray(bars) ? bars : []),
+          selectedBacktest.testingStart,
+          selectedBacktest.testingEnd,
+        );
+
+        if (cleanedBars.length > 0) {
+          allBars = cleanedBars;
+          break;
+        }
+
+        // No bars found - extend the search window backwards
+        retryCount++;
+        const newEnd = new Date(
+          currentEnd.getTime() - chunkDays * 24 * 60 * 60 * 1000,
+        );
+
+        // Check if we've gone past the minimum start
+        if (newEnd <= minStart) {
+          console.log(
+            `Initial load: reached minimum start date with no data found`,
+          );
+          break;
+        }
+
+        console.log(
+          `Initial load empty ${retryCount}/${MAX_EMPTY_FETCH_RETRIES}, extending range to ${newEnd.toISOString()}`,
+        );
+        currentEnd = newEnd;
       }
+
+      setChartBars(allBars);
+      setChartResetKey((k) => k + 1);
+
+      if (allBars.length > 0 && allBars[0].timestamp) {
+        setEarliestLoadedDate(allBars[0].timestamp);
+      } else {
+        // No bars found even after retries, set earliest to where we stopped searching
+        setEarliestLoadedDate(currentEnd.toISOString());
+      }
+
       setHasMoreHistory(true);
     } catch (e) {
       console.error("Failed to load chart data:", e);
       setChartBars([]);
       setEarliestLoadedDate(null);
     } finally {
+      isLoadingChartRef.current = false;
       setChartLoading(false);
     }
   }, [
@@ -462,59 +726,88 @@ export default function BacktestsPage() {
 
     setIsLoadingMore(true);
 
+    const minStart = new Date(selectedBacktest.testingStart);
+    const chunkDays = getChunkSizeForTimeframe(chartTimeframe);
+    let currentEarliest = new Date(earliestLoadedDate);
+    let retryCount = 0;
+
     try {
-      const earliestDate = new Date(earliestLoadedDate);
-      const endDate = new Date(earliestDate.getTime() - 1000);
-      const chunkDays = getChunkSizeForTimeframe(chartTimeframe);
-      const startDate = new Date(
-        endDate.getTime() - chunkDays * 24 * 60 * 60 * 1000,
-      );
-
-      const minStart = new Date(selectedBacktest.testingStart);
-      const boundedStart = startDate < minStart ? minStart : startDate;
-
-      if (endDate <= minStart) {
-        setHasMoreHistory(false);
-        return;
-      }
-
-      const data = await getHistoricalBars(
-        userId,
-        selectedBacktest.symbol,
-        chartTimeframe,
-        {
-          start: boundedStart.toISOString(),
-          end: endDate.toISOString(),
-          limit: 5000,
-        },
-      );
-
-      const newBars = filterBarsToRange(
-        sanitizeBars(Array.isArray(data) ? data : []),
-        selectedBacktest.testingStart,
-        selectedBacktest.testingEnd,
-      );
-
-      if (newBars.length === 0) {
-        setHasMoreHistory(false);
-        return;
-      }
-
-      setChartBars((prev) => {
-        const existingTimestamps = new Set(prev.map((b) => b.timestamp));
-        const uniqueNewBars = newBars.filter(
-          (b) => !existingTimestamps.has(b.timestamp),
+      // Loop to handle consecutive empty fetches (weekends, holidays, non-trading hours)
+      while (retryCount < MAX_EMPTY_FETCH_RETRIES) {
+        const endDate = new Date(currentEarliest.getTime() - 1000);
+        const startDate = new Date(
+          endDate.getTime() - chunkDays * 24 * 60 * 60 * 1000,
         );
-        return [...uniqueNewBars, ...prev];
-      });
+        const boundedStart = startDate < minStart ? minStart : startDate;
 
-      if (newBars.length > 0 && newBars[0].timestamp) {
-        setEarliestLoadedDate(newBars[0].timestamp);
+        // Check if we've reached or passed the minimum start date
+        if (endDate <= minStart) {
+          setHasMoreHistory(false);
+          return;
+        }
+
+        const data = await getHistoricalBars(
+          userId,
+          selectedBacktest.symbol,
+          chartTimeframe,
+          {
+            start: boundedStart.toISOString(),
+            end: endDate.toISOString(),
+            limit: 5000,
+          },
+        );
+
+        const newBars = filterBarsToRange(
+          sanitizeBars(Array.isArray(data) ? data : []),
+          selectedBacktest.testingStart,
+          selectedBacktest.testingEnd,
+        );
+
+        if (newBars.length === 0) {
+          // No bars in this range - could be weekend/holiday/non-trading hours
+          retryCount++;
+
+          // Check if we've already reached the minimum start
+          if (boundedStart.getTime() === minStart.getTime()) {
+            setHasMoreHistory(false);
+            return;
+          }
+
+          // Move the search window backwards and retry
+          currentEarliest = boundedStart;
+          console.log(
+            `Empty fetch ${retryCount}/${MAX_EMPTY_FETCH_RETRIES}, extending range to ${boundedStart.toISOString()}`,
+          );
+          continue;
+        }
+
+        // Found data - update state
+        setChartBars((prev) => {
+          const existingTimestamps = new Set(prev.map((b) => b.timestamp));
+          const uniqueNewBars = newBars.filter(
+            (b) => !existingTimestamps.has(b.timestamp),
+          );
+          return [...uniqueNewBars, ...prev];
+        });
+
+        if (newBars.length > 0 && newBars[0].timestamp) {
+          setEarliestLoadedDate(newBars[0].timestamp);
+        }
+
+        if (boundedStart.getTime() === minStart.getTime()) {
+          setHasMoreHistory(false);
+        }
+
+        return; // Successfully found and loaded data
       }
 
-      if (boundedStart.getTime() === minStart.getTime()) {
-        setHasMoreHistory(false);
-      }
+      // Exceeded max retries - stop searching
+      console.log(
+        `No data found after ${MAX_EMPTY_FETCH_RETRIES} consecutive empty fetches. Stopping.`,
+      );
+      setHasMoreHistory(false);
+      // Update earliestLoadedDate to where we stopped searching
+      setEarliestLoadedDate(currentEarliest.toISOString());
     } catch (e) {
       console.error("Failed to load more history:", e);
     } finally {
@@ -571,23 +864,37 @@ export default function BacktestsPage() {
   }, [userId, selectedBacktestId, loadBacktestDetail]);
 
   useEffect(() => {
+    if (!userId || selectedBacktestId === "") {
+      resetOrdersState();
+      return;
+    }
+    void loadOrdersPage(
+      userId,
+      selectedBacktestId as number,
+      ordersPageIndex,
+      ordersPageSize,
+    );
+  }, [
+    userId,
+    selectedBacktestId,
+    ordersPageIndex,
+    ordersPageSize,
+    loadOrdersPage,
+    resetOrdersState,
+  ]);
+
+  useEffect(() => {
     if (!userId || !hasRunning) return;
 
     const t = setInterval(() => {
-      void loadBacktestsOnly(userId);
-      if (selectedBacktestId !== "") {
-        void loadBacktestDetail(userId, selectedBacktestId as number);
-        void loadBalanceTimeline();
-      }
+      void refreshBacktestStatuses(userId);
     }, 3000);
 
     return () => clearInterval(t);
   }, [
     userId,
     hasRunning,
-    selectedBacktestId,
-    loadBacktestDetail,
-    loadBalanceTimeline,
+    refreshBacktestStatuses,
   ]);
 
   useEffect(() => {
@@ -625,18 +932,29 @@ export default function BacktestsPage() {
     }
     window.addEventListener("resize", updateHeight);
     return () => window.removeEventListener("resize", updateHeight);
-  }, [detailLoading, orders.length, selectedBacktestId]);
+  }, [ordersLoading, orders.length, selectedBacktestId]);
 
   useEffect(() => {
     setOrdersScrollTop(0);
+    setSelectedOrderId(null);
     if (ordersContainerRef.current) {
       ordersContainerRef.current.scrollTop = 0;
     }
-  }, [selectedBacktestId]);
+  }, [selectedBacktestId, ordersPageIndex]);
 
   const onOrdersScroll = useCallback(
     (event: React.UIEvent<HTMLDivElement>) => {
       setOrdersScrollTop(event.currentTarget.scrollTop);
+    },
+    [],
+  );
+
+  const onOrdersPageSizeChange = useCallback(
+    (event: React.ChangeEvent<HTMLSelectElement>) => {
+      const nextSize = Number(event.target.value);
+      if (!Number.isFinite(nextSize) || nextSize <= 0) return;
+      setOrdersPageSize(nextSize);
+      setOrdersPageIndex(0);
     },
     [],
   );
@@ -709,6 +1027,7 @@ export default function BacktestsPage() {
       await loadBacktestsOnly(userId);
       if (selectedBacktestId === id) {
         await loadBacktestDetail(userId, id);
+        await loadOrdersPage(userId, id, ordersPageIndex, ordersPageSize);
       }
     } catch (e: any) {
       const errorMessage =
@@ -731,9 +1050,8 @@ export default function BacktestsPage() {
       setPageMessage("Backtest deleted.");
       await loadBacktestsOnly(userId);
       if (selectedBacktestId === id) {
-        setSelectedBacktestId("");
+        selectBacktest("");
         setSelectedBacktest(null);
-        setOrders([]);
         setChartBars([]);
         setBalanceTimeline([]);
       }
@@ -992,7 +1310,7 @@ export default function BacktestsPage() {
                             ? "bg-[#0b1728] border-l-2 border-l-[#1f6feb]"
                             : "hover:bg-[#0b1728]/50"
                         }`}
-                        onClick={() => setSelectedBacktestId(b.id)}
+                        onClick={() => selectBacktest(b.id)}
                         title="Click to view details"
                       >
                         <td className="px-4 py-3 font-mono text-xs">
@@ -1031,7 +1349,7 @@ export default function BacktestsPage() {
                               disabled={loading}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setSelectedBacktestId(b.id);
+                                selectBacktest(b.id);
                               }}
                               type="button"
                             >
@@ -1080,19 +1398,63 @@ export default function BacktestsPage() {
           <div className="rounded-xl border border-[#132033] bg-[#0f1b2d] p-4">
             <div className="text-xs text-[var(--muted)]">BUY Orders</div>
             <div className="mt-2 text-2xl font-semibold text-emerald-300">
-              {ordersSummary.buyCount}
+              {selectedOrderCounts.buy}
             </div>
           </div>
           <div className="rounded-xl border border-[#132033] bg-[#0f1b2d] p-4">
             <div className="text-xs text-[var(--muted)]">SELL Orders</div>
             <div className="mt-2 text-2xl font-semibold text-amber-300">
-              {ordersSummary.sellCount}
+              {selectedOrderCounts.sell}
             </div>
           </div>
         </div>
 
         <div className="rounded-2xl border border-[#132033] bg-[#0f1b2d] p-6">
-          <div className="text-sm font-semibold">Orders List</div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="text-sm font-semibold">Orders List</div>
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <label className="flex items-center gap-2 text-[var(--muted)]">
+                Page size
+                <select
+                  className="rounded-md border border-[#1f2e44] bg-[#0b1728] px-2 py-1 text-xs text-white disabled:opacity-60"
+                  value={ordersPageSize}
+                  onChange={onOrdersPageSizeChange}
+                  disabled={selectedBacktestId === "" || ordersLoading}
+                >
+                  {ORDER_PAGE_SIZES.map((size) => (
+                    <option key={size} value={size}>
+                      {size}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                className="rounded-md border border-[#1f2e44] px-2 py-1 text-xs text-white disabled:opacity-60"
+                type="button"
+                onClick={() =>
+                  setOrdersPageIndex((prev) => Math.max(prev - 1, 0))
+                }
+                disabled={!canOrdersPageBack || ordersLoading}
+              >
+                Prev
+              </button>
+              <div className="text-[var(--muted)]">Page {ordersPageLabel}</div>
+              <button
+                className="rounded-md border border-[#1f2e44] px-2 py-1 text-xs text-white disabled:opacity-60"
+                type="button"
+                onClick={() =>
+                  setOrdersPageIndex((prev) =>
+                    ordersTotalPages > 0
+                      ? Math.min(prev + 1, ordersTotalPages - 1)
+                      : prev,
+                  )
+                }
+                disabled={!canOrdersPageForward || ordersLoading}
+              >
+                Next
+              </button>
+            </div>
+          </div>
 
           {selectedBacktestId === "" ? (
             <div className="mt-4 space-y-3">
@@ -1105,19 +1467,23 @@ export default function BacktestsPage() {
                 </div>
               </div>
             </div>
-          ) : detailLoading ? (
+          ) : ordersLoading && ordersTotalElements === 0 ? (
             <div className="mt-3 text-sm text-[var(--muted)]">
-              Loading backtest details.
+              Loading orders.
             </div>
-          ) : orders.length === 0 ? (
+          ) : ordersTotalElements === 0 ? (
             <div className="mt-3 text-sm text-[var(--muted)]">
               No orders for this backtest yet.
             </div>
           ) : (
             <>
               <div className="mt-2 text-xs text-[var(--muted)]">
-                Showing {ordersWindow.startIndex + 1}-{ordersWindow.endIndex} of{" "}
-                {ordersWindow.total}
+                Showing {ordersDisplayRange.start}-{ordersDisplayRange.end}
+                {ordersLoading && (
+                  <span className="ml-2 text-[var(--muted)]">
+                    Refreshing...
+                  </span>
+                )}
               </div>
               <div
                 ref={ordersContainerRef}
@@ -1148,6 +1514,13 @@ export default function BacktestsPage() {
                     {ordersWindow.visibleOrders.map((o, idx) => {
                       const rowIndex = ordersWindow.startIndex + idx;
                       const isSelected = selectedOrderId === o.id;
+                      const side = String(o.side ?? "").toUpperCase();
+                      const sideClass =
+                        side === "BUY"
+                          ? "bg-emerald-500/10 text-emerald-200 border-emerald-500/20"
+                          : side === "SELL"
+                            ? "bg-red-500/10 text-red-200 border-red-500/20"
+                            : "bg-gray-500/10 text-gray-200 border-gray-500/20";
                       return (
                         <tr
                           key={o.id ?? `row-${rowIndex}`}
@@ -1160,12 +1533,18 @@ export default function BacktestsPage() {
                           title="Click to view detail"
                         >
                           <td className="px-4 py-3 text-xs text-[var(--muted)]">
-                            {rowIndex + 1}
+                            {ordersPageIndex * ordersPageSize + rowIndex + 1}
                           </td>
                           <td className="px-4 py-3 font-medium">
                             {o.symbol ?? "-"}
                           </td>
-                          <td className="px-4 py-3">{o.side ?? "-"}</td>
+                          <td className="px-4 py-3">
+                            <span
+                              className={`inline-flex min-w-[56px] justify-center rounded-full border px-2 py-0.5 text-xs ${sideClass}`}
+                            >
+                              {o.side ?? "-"}
+                            </span>
+                          </td>
                           <td className="px-4 py-3">{fmtNum(o.quantity)}</td>
                           <td className="px-4 py-3">{fmtNum(o.price)}</td>
                           <td className="px-4 py-3">
@@ -1194,9 +1573,9 @@ export default function BacktestsPage() {
           <div className="rounded-2xl border border-[#132033] bg-[#0f1b2d] p-6">
             <div className="text-sm font-semibold">Selected Order Detail</div>
 
-            {detailLoading ? (
+            {ordersLoading && ordersTotalElements === 0 ? (
               <div className="mt-3 text-sm text-[var(--muted)]">
-                Loading detail.
+                Loading order.
               </div>
             ) : !selectedOrder ? (
               <div className="mt-3 text-sm text-[var(--muted)]">
@@ -1268,7 +1647,7 @@ export default function BacktestsPage() {
                 <div className="rounded-lg border border-[#132033] bg-[#0b1728] p-4">
                   <div className="text-xs text-[var(--muted)]">Status</div>
                   <div className="mt-1">
-                    <BacktestBadge text={String(selectedBacktest.status)} />
+                    <BacktestBadge text={String(selectedBacktestStatus)} />
                   </div>
                 </div>
                 <div className="rounded-lg border border-[#132033] bg-[#0b1728] p-4">
@@ -1391,7 +1770,7 @@ export default function BacktestsPage() {
               </div>
               <div className="mt-1 text-xs text-[var(--muted)]">
                 {selectedBacktest?.symbol
-                  ? `Orders: ${ordersSummary.buyCount} BUY, ${ordersSummary.sellCount} SELL`
+                  ? `Orders: ${selectedOrderCounts.buy} BUY, ${selectedOrderCounts.sell} SELL`
                   : "Select a backtest to view chart with order markers"}
               </div>
             </div>
