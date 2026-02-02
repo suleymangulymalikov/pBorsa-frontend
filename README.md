@@ -23,7 +23,7 @@ App runs
 Create `pBorsa-frontend/.env.local`:
 
 ```
-VITE_API_BASE_URL=http://localhost:8081
+VITE_API_BASE_URL=https://pborsa.duckdns.org
 VITE_FIREBASE_API_KEY=...
 VITE_FIREBASE_AUTH_DOMAIN=...
 VITE_FIREBASE_PROJECT_ID=...
@@ -47,7 +47,8 @@ Do not commit real credentials.
 The frontend calls:
 
 ```
-http://localhost:8081
+- local: http://localhost:8081
+- hosted: https://pborsa.duckdns.org
 ```
 
 Requests are authenticated with a Firebase ID token. The app attaches this automatically.
