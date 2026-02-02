@@ -98,10 +98,31 @@ function formatWinRate(total?: number | null, wins?: number | null): string {
   return `${((w / t) * 100).toFixed(2)}%`;
 }
 
-function toUtcTimestamp(value: string): number | null {
-  const t = new Date(value).getTime();
-  if (Number.isNaN(t)) return null;
-  return Math.floor(t / 1000);
+function getTimeframeBucketMs(timeframe: Timeframe): number {
+  switch (timeframe) {
+    case "1Min":
+      return 60 * 1000;
+    case "5Min":
+      return 5 * 60 * 1000;
+    case "15Min":
+      return 15 * 60 * 1000;
+    case "30Min":
+      return 30 * 60 * 1000;
+    case "1Hour":
+      return 60 * 60 * 1000;
+    case "4Hour":
+      return 4 * 60 * 60 * 1000;
+    case "1Day":
+      return 24 * 60 * 60 * 1000;
+    case "1Week":
+      return 7 * 24 * 60 * 60 * 1000;
+    default:
+      return 24 * 60 * 60 * 1000;
+  }
+}
+
+function roundToTimeframeBucket(timestampMs: number, bucketMs: number): number {
+  return Math.floor(timestampMs / bucketMs) * bucketMs;
 }
 
 function sanitizeBars(bars: StockBar[]) {
@@ -219,6 +240,11 @@ export default function BacktestsPage() {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMoreHistory, setHasMoreHistory] = useState(true);
   const loadMoreTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isLoadingChartRef = useRef(false);
+
+  // Maximum number of consecutive empty fetches before giving up
+  // For 1Min/5Min with 3-day chunks, 5 retries = 15 days coverage (handles long weekends/holidays)
+  const MAX_EMPTY_FETCH_RETRIES = 5;
 
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -356,22 +382,66 @@ export default function BacktestsPage() {
 
   const chartMarkers = useMemo((): ChartMarker[] => {
     if (!selectedBacktest?.symbol) return [];
-    return orders
-      .filter((o) => o.symbol === selectedBacktest.symbol)
-      .map((order) => {
-        const time = order.executedAt ? toUtcTimestamp(order.executedAt) : null;
-        if (!time) return null;
-        const isBuy = order.side === "BUY";
-        return {
-          time: time as ChartMarker["time"],
-          position: isBuy ? "belowBar" : "aboveBar",
-          color: isBuy ? "#22c55e" : "#ef4444",
-          shape: isBuy ? "arrowUp" : "arrowDown",
-          text: String(order.quantity ?? ""),
-        } as ChartMarker;
-      })
-      .filter(Boolean) as ChartMarker[];
-  }, [orders, selectedBacktest?.symbol]);
+
+    const bucketMs = getTimeframeBucketMs(chartTimeframe);
+    const filteredOrders = orders.filter(
+      (o) => o.symbol === selectedBacktest.symbol && o.executedAt,
+    );
+
+    // Group orders by timeframe bucket and calculate net quantity
+    const bucketMap = new Map<
+      number,
+      { buyQty: number; sellQty: number; bucketTimeSec: number }
+    >();
+
+    for (const order of filteredOrders) {
+      const timestampMs = new Date(order.executedAt!).getTime();
+      if (Number.isNaN(timestampMs)) continue;
+
+      const bucketKey = roundToTimeframeBucket(timestampMs, bucketMs);
+      const bucketTimeSec = Math.floor(bucketKey / 1000);
+
+      if (!bucketMap.has(bucketKey)) {
+        bucketMap.set(bucketKey, { buyQty: 0, sellQty: 0, bucketTimeSec });
+      }
+
+      const bucket = bucketMap.get(bucketKey)!;
+      const qty = Number(order.quantity) || 0;
+      if (order.side === "BUY") {
+        bucket.buyQty += qty;
+      } else if (order.side === "SELL") {
+        bucket.sellQty += qty;
+      }
+    }
+
+    // Convert buckets to markers - separate arrows for buys and sells
+    const markers: ChartMarker[] = [];
+    for (const bucket of bucketMap.values()) {
+      // Add buy marker if there were any buys
+      if (bucket.buyQty > 0) {
+        markers.push({
+          time: bucket.bucketTimeSec as ChartMarker["time"],
+          position: "belowBar",
+          color: "#22c55e",
+          shape: "arrowUp",
+          text: bucket.buyQty.toFixed(1),
+        });
+      }
+
+      // Add sell marker if there were any sells
+      if (bucket.sellQty > 0) {
+        markers.push({
+          time: bucket.bucketTimeSec as ChartMarker["time"],
+          position: "aboveBar",
+          color: "#ef4444",
+          shape: "arrowDown",
+          text: bucket.sellQty.toFixed(1),
+        });
+      }
+    }
+
+    return markers;
+  }, [orders, selectedBacktest?.symbol, chartTimeframe]);
 
   const balanceRange = useMemo(() => {
     const start =
@@ -543,36 +613,79 @@ export default function BacktestsPage() {
   const loadChartData = useCallback(async () => {
     if (!userId || !selectedBacktest?.symbol) return;
     if (!selectedBacktest.testingStart || !selectedBacktest.testingEnd) return;
+    
+    // Prevent concurrent executions using ref (state check is not enough due to batched updates)
+    if (isLoadingChartRef.current) return;
+    isLoadingChartRef.current = true;
 
     setChartLoading(true);
     try {
-      const bars = await getHistoricalBars(
-        userId,
-        selectedBacktest.symbol,
-        chartTimeframe,
-        {
-          end: selectedBacktest.testingEnd,
-          limit: 500,
-        },
-      );
-      const cleanedBars = filterBarsToRange(
-        sanitizeBars(Array.isArray(bars) ? bars : []),
-        selectedBacktest.testingStart,
-        selectedBacktest.testingEnd,
-      );
-      setChartBars(cleanedBars);
-      setChartResetKey((k) => k + 1);
-      if (cleanedBars.length > 0 && cleanedBars[0].timestamp) {
-        setEarliestLoadedDate(cleanedBars[0].timestamp);
-      } else {
-        setEarliestLoadedDate(null);
+      const minStart = new Date(selectedBacktest.testingStart);
+      const chunkDays = getChunkSizeForTimeframe(chartTimeframe);
+      let currentEnd = new Date(selectedBacktest.testingEnd);
+      let retryCount = 0;
+      let allBars: StockBar[] = [];
+
+      // Loop to handle initial load falling on non-trading hours (weekends, holidays)
+      while (retryCount < MAX_EMPTY_FETCH_RETRIES) {
+        const bars = await getHistoricalBars(
+          userId,
+          selectedBacktest.symbol,
+          chartTimeframe,
+          {
+            end: currentEnd.toISOString(),
+            limit: 500,
+          },
+        );
+
+        const cleanedBars = filterBarsToRange(
+          sanitizeBars(Array.isArray(bars) ? bars : []),
+          selectedBacktest.testingStart,
+          selectedBacktest.testingEnd,
+        );
+
+        if (cleanedBars.length > 0) {
+          allBars = cleanedBars;
+          break;
+        }
+
+        // No bars found - extend the search window backwards
+        retryCount++;
+        const newEnd = new Date(
+          currentEnd.getTime() - chunkDays * 24 * 60 * 60 * 1000,
+        );
+
+        // Check if we've gone past the minimum start
+        if (newEnd <= minStart) {
+          console.log(
+            `Initial load: reached minimum start date with no data found`,
+          );
+          break;
+        }
+
+        console.log(
+          `Initial load empty ${retryCount}/${MAX_EMPTY_FETCH_RETRIES}, extending range to ${newEnd.toISOString()}`,
+        );
+        currentEnd = newEnd;
       }
+
+      setChartBars(allBars);
+      setChartResetKey((k) => k + 1);
+
+      if (allBars.length > 0 && allBars[0].timestamp) {
+        setEarliestLoadedDate(allBars[0].timestamp);
+      } else {
+        // No bars found even after retries, set earliest to where we stopped searching
+        setEarliestLoadedDate(currentEnd.toISOString());
+      }
+
       setHasMoreHistory(true);
     } catch (e) {
       console.error("Failed to load chart data:", e);
       setChartBars([]);
       setEarliestLoadedDate(null);
     } finally {
+      isLoadingChartRef.current = false;
       setChartLoading(false);
     }
   }, [
@@ -611,59 +724,88 @@ export default function BacktestsPage() {
 
     setIsLoadingMore(true);
 
+    const minStart = new Date(selectedBacktest.testingStart);
+    const chunkDays = getChunkSizeForTimeframe(chartTimeframe);
+    let currentEarliest = new Date(earliestLoadedDate);
+    let retryCount = 0;
+
     try {
-      const earliestDate = new Date(earliestLoadedDate);
-      const endDate = new Date(earliestDate.getTime() - 1000);
-      const chunkDays = getChunkSizeForTimeframe(chartTimeframe);
-      const startDate = new Date(
-        endDate.getTime() - chunkDays * 24 * 60 * 60 * 1000,
-      );
-
-      const minStart = new Date(selectedBacktest.testingStart);
-      const boundedStart = startDate < minStart ? minStart : startDate;
-
-      if (endDate <= minStart) {
-        setHasMoreHistory(false);
-        return;
-      }
-
-      const data = await getHistoricalBars(
-        userId,
-        selectedBacktest.symbol,
-        chartTimeframe,
-        {
-          start: boundedStart.toISOString(),
-          end: endDate.toISOString(),
-          limit: 5000,
-        },
-      );
-
-      const newBars = filterBarsToRange(
-        sanitizeBars(Array.isArray(data) ? data : []),
-        selectedBacktest.testingStart,
-        selectedBacktest.testingEnd,
-      );
-
-      if (newBars.length === 0) {
-        setHasMoreHistory(false);
-        return;
-      }
-
-      setChartBars((prev) => {
-        const existingTimestamps = new Set(prev.map((b) => b.timestamp));
-        const uniqueNewBars = newBars.filter(
-          (b) => !existingTimestamps.has(b.timestamp),
+      // Loop to handle consecutive empty fetches (weekends, holidays, non-trading hours)
+      while (retryCount < MAX_EMPTY_FETCH_RETRIES) {
+        const endDate = new Date(currentEarliest.getTime() - 1000);
+        const startDate = new Date(
+          endDate.getTime() - chunkDays * 24 * 60 * 60 * 1000,
         );
-        return [...uniqueNewBars, ...prev];
-      });
+        const boundedStart = startDate < minStart ? minStart : startDate;
 
-      if (newBars.length > 0 && newBars[0].timestamp) {
-        setEarliestLoadedDate(newBars[0].timestamp);
+        // Check if we've reached or passed the minimum start date
+        if (endDate <= minStart) {
+          setHasMoreHistory(false);
+          return;
+        }
+
+        const data = await getHistoricalBars(
+          userId,
+          selectedBacktest.symbol,
+          chartTimeframe,
+          {
+            start: boundedStart.toISOString(),
+            end: endDate.toISOString(),
+            limit: 5000,
+          },
+        );
+
+        const newBars = filterBarsToRange(
+          sanitizeBars(Array.isArray(data) ? data : []),
+          selectedBacktest.testingStart,
+          selectedBacktest.testingEnd,
+        );
+
+        if (newBars.length === 0) {
+          // No bars in this range - could be weekend/holiday/non-trading hours
+          retryCount++;
+
+          // Check if we've already reached the minimum start
+          if (boundedStart.getTime() === minStart.getTime()) {
+            setHasMoreHistory(false);
+            return;
+          }
+
+          // Move the search window backwards and retry
+          currentEarliest = boundedStart;
+          console.log(
+            `Empty fetch ${retryCount}/${MAX_EMPTY_FETCH_RETRIES}, extending range to ${boundedStart.toISOString()}`,
+          );
+          continue;
+        }
+
+        // Found data - update state
+        setChartBars((prev) => {
+          const existingTimestamps = new Set(prev.map((b) => b.timestamp));
+          const uniqueNewBars = newBars.filter(
+            (b) => !existingTimestamps.has(b.timestamp),
+          );
+          return [...uniqueNewBars, ...prev];
+        });
+
+        if (newBars.length > 0 && newBars[0].timestamp) {
+          setEarliestLoadedDate(newBars[0].timestamp);
+        }
+
+        if (boundedStart.getTime() === minStart.getTime()) {
+          setHasMoreHistory(false);
+        }
+
+        return; // Successfully found and loaded data
       }
 
-      if (boundedStart.getTime() === minStart.getTime()) {
-        setHasMoreHistory(false);
-      }
+      // Exceeded max retries - stop searching
+      console.log(
+        `No data found after ${MAX_EMPTY_FETCH_RETRIES} consecutive empty fetches. Stopping.`,
+      );
+      setHasMoreHistory(false);
+      // Update earliestLoadedDate to where we stopped searching
+      setEarliestLoadedDate(currentEarliest.toISOString());
     } catch (e) {
       console.error("Failed to load more history:", e);
     } finally {
