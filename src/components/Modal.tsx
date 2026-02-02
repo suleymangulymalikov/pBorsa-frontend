@@ -54,7 +54,10 @@ export default function Modal({ isOpen, onClose, title, children }: ModalProps) 
       aria-modal="true"
     >
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div
+        className="absolute inset-0 z-0 bg-black/60 backdrop-blur-sm"
+        onClick={onClose} // allows close by clicking outside
+      />
 
       {/* Modal */}
       <div className="relative z-10 w-full max-w-lg overflow-hidden rounded-2xl border border-[#132033] bg-[#0f1b2d] shadow-xl">
@@ -84,7 +87,7 @@ export default function Modal({ isOpen, onClose, title, children }: ModalProps) 
         </div>
 
         {/* Content */}
-        <div className="max-h-[calc(100vh-12rem)] overflow-y-auto px-6 py-5">
+        <div className="max-h-[calc(100vh-12rem)] overflow-y-auto overscroll-contain px-6 py-5">
           {children}
         </div>
       </div>
