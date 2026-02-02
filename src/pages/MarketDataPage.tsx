@@ -468,7 +468,7 @@ export default function MarketDataPage() {
             </button>
           </div>
 
-          <div className="mt-4 flex flex-wrap items-end gap-3">
+          <div className="mt-4 flex flex-wrap items-center gap-3">
             <div className="min-w-[260px] flex-1">
               <label className="block text-xs uppercase tracking-wide text-[var(--muted)]">
                 Add symbol

@@ -14,7 +14,9 @@ npm install
 npm run dev
 ```
 
-App runs at `http://localhost:5173`.
+App runs
+- locally at `http://localhost:5173`.
+- hosted &nbsp;`https://pborsa.duckdns.org`
 
 ## Environment
 
