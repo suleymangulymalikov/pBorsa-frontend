@@ -53,11 +53,19 @@ Requests are authenticated with a Firebase ID token. The app attaches this autom
 ## Project structure
 
 ```
+.github
+  workflows
+e2e
+  tests/
 src/
   api/          backend API calls
+  auth/
+  components/   shared UI
+  layouts/
   lib/          Firebase config
   pages/        route pages
-  components/   shared UI
+  routes/
+  App.tsx
   main.tsx
 ```
 
@@ -76,4 +84,13 @@ src/
 If Alpaca credentials are not set, the dashboard shows a prompt to configure them.
 Go to Account -> Credentials and add your API key + secret.
 
-test 1
+## E2E Testing Setup (Playwright)
+
+### Run Tests
+- commands (see [package.json](./package.json))
+  - `e2e:test`
+  - `e2e:report`
+- examples
+  ```bash
+  npm run e2e:test
+  ```
