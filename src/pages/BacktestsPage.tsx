@@ -223,6 +223,7 @@ export default function BacktestsPage() {
     null,
   );
   const [orders, setOrders] = useState<BacktestOrder[]>([]);
+  const [allOrdersForChart, setAllOrdersForChart] = useState<BacktestOrder[]>([]);
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
   const [ordersPageIndex, setOrdersPageIndex] = useState(0);
   const [ordersPageSize, setOrdersPageSize] = useState(50);
@@ -384,16 +385,65 @@ export default function BacktestsPage() {
 
   const chartMarkers = useMemo((): ChartMarker[] => {
     if (!selectedBacktest?.symbol) return [];
+    if (chartBars.length === 0) return [];
 
     const bucketMs = getTimeframeBucketMs(chartTimeframe);
-    const filteredOrders = orders.filter(
+    const filteredOrders = allOrdersForChart.filter(
       (o) => o.symbol === selectedBacktest.symbol && o.executedAt,
     );
+
+    // Build a set of actual bar timestamps (in seconds) for snapping markers
+    const barTimestampsSec = new Set<number>();
+    for (const bar of chartBars) {
+      if (bar.timestamp) {
+        const ts = new Date(bar.timestamp).getTime();
+        if (!Number.isNaN(ts)) {
+          barTimestampsSec.add(Math.floor(ts / 1000));
+        }
+      }
+    }
+
+    // Create sorted array for binary search to find closest bar
+    const sortedBarTimes = Array.from(barTimestampsSec).sort((a, b) => a - b);
+
+    // Helper to find the closest bar timestamp
+    const findClosestBarTime = (targetSec: number): number | null => {
+      if (sortedBarTimes.length === 0) return null;
+
+      // Binary search for closest time
+      let left = 0;
+      let right = sortedBarTimes.length - 1;
+
+      while (left < right) {
+        const mid = Math.floor((left + right) / 2);
+        if (sortedBarTimes[mid] < targetSec) {
+          left = mid + 1;
+        } else {
+          right = mid;
+        }
+      }
+
+      // Check if the found index or the previous one is closer
+      const closest = sortedBarTimes[left];
+      if (left > 0) {
+        const prev = sortedBarTimes[left - 1];
+        if (Math.abs(prev - targetSec) < Math.abs(closest - targetSec)) {
+          return prev;
+        }
+      }
+
+      // Only return if within the bucket timeframe (to avoid markers on wrong bars)
+      const bucketSec = bucketMs / 1000;
+      if (Math.abs(closest - targetSec) <= bucketSec) {
+        return closest;
+      }
+      return null;
+    };
 
     // Group orders by timeframe bucket and calculate net quantity
     const bucketMap = new Map<
       number,
-      { buyQty: number; sellQty: number; bucketTimeSec: number }
+      { buyQty: number; sellQty: number; bucketTimeSec: number; actualBarTime: number | null }
     >();
 
     for (const order of filteredOrders) {
@@ -404,7 +454,9 @@ export default function BacktestsPage() {
       const bucketTimeSec = Math.floor(bucketKey / 1000);
 
       if (!bucketMap.has(bucketKey)) {
-        bucketMap.set(bucketKey, { buyQty: 0, sellQty: 0, bucketTimeSec });
+        // Find the actual bar time that matches this bucket
+        const actualBarTime = findClosestBarTime(bucketTimeSec);
+        bucketMap.set(bucketKey, { buyQty: 0, sellQty: 0, bucketTimeSec, actualBarTime });
       }
 
       const bucket = bucketMap.get(bucketKey)!;
@@ -419,10 +471,14 @@ export default function BacktestsPage() {
     // Convert buckets to markers - separate arrows for buys and sells
     const markers: ChartMarker[] = [];
     for (const bucket of bucketMap.values()) {
+      // Use actual bar time if found, otherwise skip this marker
+      const markerTime = bucket.actualBarTime;
+      if (markerTime === null) continue;
+
       // Add buy marker if there were any buys
       if (bucket.buyQty > 0) {
         markers.push({
-          time: bucket.bucketTimeSec as ChartMarker["time"],
+          time: markerTime as ChartMarker["time"],
           position: "belowBar",
           color: "#22c55e",
           shape: "arrowUp",
@@ -433,7 +489,7 @@ export default function BacktestsPage() {
       // Add sell marker if there were any sells
       if (bucket.sellQty > 0) {
         markers.push({
-          time: bucket.bucketTimeSec as ChartMarker["time"],
+          time: markerTime as ChartMarker["time"],
           position: "aboveBar",
           color: "#ef4444",
           shape: "arrowDown",
@@ -443,7 +499,7 @@ export default function BacktestsPage() {
     }
 
     return markers;
-  }, [orders, selectedBacktest?.symbol, chartTimeframe]);
+  }, [allOrdersForChart, selectedBacktest?.symbol, chartTimeframe, chartBars]);
 
   const balanceRange = useMemo(() => {
     const start =
@@ -460,6 +516,7 @@ export default function BacktestsPage() {
 
   const resetOrdersState = useCallback(() => {
     setOrders([]);
+    setAllOrdersForChart([]);
     setOrdersTotalPages(0);
     setOrdersTotalElements(0);
     setSelectedOrderId(null);
@@ -581,6 +638,26 @@ export default function BacktestsPage() {
       }
     },
     [ordersSort, resetOrdersState],
+  );
+
+  const loadAllOrdersForChart = useCallback(
+    async (uid: number, backtestId: number) => {
+      try {
+        // Fetch all orders with a large page size for chart display
+        const data = await getBacktestOrdersPage(uid, backtestId, {
+          page: 0,
+          size: 10000,
+          sort: ordersSort,
+        });
+
+        const content = Array.isArray(data?.content) ? data.content : [];
+        setAllOrdersForChart(content);
+      } catch {
+        // Silently fail - chart will just not show markers
+        setAllOrdersForChart([]);
+      }
+    },
+    [ordersSort],
   );
 
   const refreshBacktestStatuses = useCallback(
@@ -882,6 +959,14 @@ export default function BacktestsPage() {
     loadOrdersPage,
     resetOrdersState,
   ]);
+
+  useEffect(() => {
+    if (!userId || selectedBacktestId === "") {
+      setAllOrdersForChart([]);
+      return;
+    }
+    void loadAllOrdersForChart(userId, selectedBacktestId as number);
+  }, [userId, selectedBacktestId, loadAllOrdersForChart]);
 
   useEffect(() => {
     if (!userId || !hasRunning) return;

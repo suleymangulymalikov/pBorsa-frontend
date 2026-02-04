@@ -82,6 +82,7 @@ export default function StockChart({
   const barMapRef = useRef<Map<number, StockBar>>(new Map());
   const onScrollNearStartRef = useRef(onScrollNearStart);
   const timeBoundsRef = useRef<{ min?: UTCTimestamp; max?: UTCTimestamp }>({});
+  const markersRef = useRef<ChartMarker[]>([]);
 
   useEffect(() => {
     onScrollNearStartRef.current = onScrollNearStart;
@@ -351,6 +352,26 @@ export default function StockChart({
     candle.setData(candleData as Parameters<typeof candle.setData>[0]);
     line.setData(lineData as Parameters<typeof line.setData>[0]);
     volume.setData(volumeData as Parameters<typeof volume.setData>[0]);
+
+    // Re-apply markers after setting data to prevent them from disappearing
+    // Use requestAnimationFrame to ensure the chart has finished processing the new data
+    const applyMarkers = () => {
+      const markersPlugin = markersPluginRef.current;
+      if (markersPlugin && markersRef.current.length > 0) {
+        const seriesMarkers = markersRef.current.map((m) => ({
+          time: m.time,
+          position: m.position,
+          color: m.color,
+          shape: m.shape,
+          text: m.text,
+        }));
+        markersPlugin.setMarkers(seriesMarkers);
+      }
+    };
+
+    // Apply immediately and also after a frame to handle async chart updates
+    applyMarkers();
+    requestAnimationFrame(applyMarkers);
   }, [bars]);
 
   useEffect(() => {
@@ -377,6 +398,9 @@ export default function StockChart({
   }, [resetKey, lockVisibleRange]);
 
   useEffect(() => {
+    // Store markers in ref for re-application on zoom
+    markersRef.current = markers || [];
+
     const markersPlugin = markersPluginRef.current;
     if (!markersPlugin) return;
     if (!markers || markers.length === 0) {
@@ -392,7 +416,7 @@ export default function StockChart({
       text: m.text,
     }));
     markersPlugin.setMarkers(seriesMarkers);
-  }, [markers]);
+  }, [markers, bars]);
 
   return (
     <div className="w-full" style={{ height: `${height}px` }}>
